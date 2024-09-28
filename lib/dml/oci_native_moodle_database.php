@@ -131,15 +131,10 @@ class oci_native_moodle_database extends moodle_database {
      * @return bool true
      * @throws dml_connection_exception if error
      */
-    public function connect($dbhost, $dbuser, $dbpass, $dbname, $prefix, array $dboptions=null) {
+    public function connect($dbhost, $dbuser, $dbpass, $dbname, $prefix, ?array $dboptions=null) {
         if ($prefix == '' and !$this->external) {
             //Enforce prefixes for everybody but mysql
             throw new dml_exception('prefixcannotbeempty', $this->get_dbfamily());
-        }
-        if (!$this->external and strlen($prefix) > 2) {
-            //Max prefix length for Oracle is 2cc
-            $a = (object)array('dbfamily'=>'oracle', 'maxlength'=>2);
-            throw new dml_exception('prefixtoolong', $a);
         }
 
         $driverstatus = $this->driver_installed();
@@ -366,6 +361,10 @@ class oci_native_moodle_database extends moodle_database {
      * @return array ($sql, $params) updated query and parameters
      */
     protected function tweak_param_names($sql, array $params) {
+        global $CFG;
+
+        require_once($CFG->libdir . '/ddllib.php');
+
         if (empty($params)) {
             return array($sql, $params);
         }
@@ -373,8 +372,8 @@ class oci_native_moodle_database extends moodle_database {
         $newparams = array();
         $searcharr = array(); // search => replace pairs
         foreach ($params as $name => $value) {
-            // Keep the name within the 30 chars limit always (prefixing/replacing)
-            if (strlen($name) <= 28) {
+            // Keep the name within the  xmldb_field::NAME_MAX_LENGTH chars limit always (prefixing/replacing).
+            if (strlen($name) <= (xmldb_field::NAME_MAX_LENGTH - 2)) {
                 $newname = 'o_' . $name;
             } else {
                 $newname = 'o_' . substr($name, 2);
@@ -720,7 +719,7 @@ class oci_native_moodle_database extends moodle_database {
      * @param $field string the field where the record is going to be inserted/updated
      * @param $value mixed the value to be inserted/updated
      */
-    private function oracle_dirty_hack ($table, $field, $value) {
+    private function oracle_dirty_hack($table, $field, $value) {
 
         // General bound parameter, just hack the spaces and pray it will work.
         if (!$table) {
@@ -876,7 +875,7 @@ class oci_native_moodle_database extends moodle_database {
         return true;
     }
 
-    protected function bind_params($stmt, array &$params=null, $tablename=null, array &$descriptors = null) {
+    protected function bind_params($stmt, ?array &$params=null, $tablename=null, ?array &$descriptors = null) {
         if ($params) {
             $columns = array();
             if ($tablename) {
@@ -1007,7 +1006,7 @@ class oci_native_moodle_database extends moodle_database {
      * @return bool true
      * @throws dml_exception A DML specific exception is thrown for any errors.
      */
-    public function execute($sql, array $params=null) {
+    public function execute($sql, ?array $params=null) {
         list($sql, $params, $type) = $this->fix_sql_params($sql, $params);
 
         if (strpos($sql, ';') !== false) {
@@ -1041,7 +1040,7 @@ class oci_native_moodle_database extends moodle_database {
      * @return mixed a fieldset object containing the first matching record, false or exception if error not found depending on mode
      * @throws dml_exception A DML specific exception is thrown for any errors.
      */
-    public function get_record_sql($sql, array $params=null, $strictness=IGNORE_MISSING) {
+    public function get_record_sql($sql, ?array $params=null, $strictness=IGNORE_MISSING) {
         $strictness = (int)$strictness;
         if ($strictness == IGNORE_MULTIPLE) {
             // do not limit here - ORA does not like that
@@ -1074,7 +1073,7 @@ class oci_native_moodle_database extends moodle_database {
      * @return moodle_recordset instance
      * @throws dml_exception A DML specific exception is thrown for any errors.
      */
-    public function get_recordset_sql($sql, array $params=null, $limitfrom=0, $limitnum=0) {
+    public function get_recordset_sql($sql, ?array $params=null, $limitfrom=0, $limitnum=0) {
 
         list($limitfrom, $limitnum) = $this->normalise_limit_from_num($limitfrom, $limitnum);
 
@@ -1118,7 +1117,7 @@ class oci_native_moodle_database extends moodle_database {
      * @return array of objects, or empty array if no records were found
      * @throws dml_exception A DML specific exception is thrown for any errors.
      */
-    public function get_records_sql($sql, array $params=null, $limitfrom=0, $limitnum=0) {
+    public function get_records_sql($sql, ?array $params=null, $limitfrom=0, $limitnum=0) {
 
         list($limitfrom, $limitnum) = $this->normalise_limit_from_num($limitfrom, $limitnum);
 
@@ -1169,7 +1168,7 @@ class oci_native_moodle_database extends moodle_database {
      * @return array of values
      * @throws dml_exception A DML specific exception is thrown for any errors.
      */
-    public function get_fieldset_sql($sql, array $params=null) {
+    public function get_fieldset_sql($sql, ?array $params=null) {
         list($sql, $params, $type) = $this->fix_sql_params($sql, $params);
 
         list($sql, $params) = $this->tweak_param_names($sql, $params);
@@ -1413,7 +1412,7 @@ class oci_native_moodle_database extends moodle_database {
      * @return bool true
      * @throws dml_exception A DML specific exception is thrown for any errors.
      */
-    public function set_field_select($table, $newfield, $newvalue, $select, array $params=null) {
+    public function set_field_select($table, $newfield, $newvalue, $select, ?array $params=null) {
 
         if ($select) {
             $select = "WHERE $select";
@@ -1470,7 +1469,7 @@ class oci_native_moodle_database extends moodle_database {
      * @return bool true
      * @throws dml_exception A DML specific exception is thrown for any errors.
      */
-    public function delete_records_select($table, $select, array $params=null) {
+    public function delete_records_select($table, $select, ?array $params=null) {
 
         if ($select) {
             $select = "WHERE $select";
@@ -1578,8 +1577,7 @@ class oci_native_moodle_database extends moodle_database {
         }
     }
 
-    public function sql_concat() {
-        $arr = func_get_args();
+    public function sql_concat(...$arr) {
         if (empty($arr)) {
             return " ' ' ";
         }
@@ -1875,5 +1873,14 @@ class oci_native_moodle_database extends moodle_database {
         $result = oci_rollback($this->oci);
         $this->commit_status = OCI_COMMIT_ON_SUCCESS;
         $this->query_end($result);
+    }
+
+    /**
+     * Oracle supports the COUNT() window function and provides a performance improvement.
+     *
+     * @return bool
+     */
+    public function is_count_window_function_supported(): bool {
+        return true;
     }
 }

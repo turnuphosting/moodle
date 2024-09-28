@@ -20,6 +20,7 @@ use core_enrol_external;
 use core_external\external_api;
 use enrol_user_enrolment_form;
 use externallib_advanced_testcase;
+use stdClass;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -37,12 +38,12 @@ require_once($CFG->dirroot . '/enrol/externallib.php');
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @since Moodle 2.4
  */
-class externallib_test extends externallib_advanced_testcase {
+final class externallib_test extends externallib_advanced_testcase {
 
     /**
      * dataProvider for test_get_enrolled_users_visibility().
      */
-    public function get_enrolled_users_visibility_provider() {
+    public static function get_enrolled_users_visibility_provider(): array {
         return array(
             'Course without groups, default behavior (not filtering by cap, group, active)' =>
             array(
@@ -231,7 +232,7 @@ class externallib_test extends externallib_advanced_testcase {
                 ),
             ),
 
-            'Course with separate groups, filtering by withcapability (having moodle/role:review)' =>
+            'Course with separate groups, filtering by withcapability (having moodle/role:review & moodle/course:bulkmessaging)' =>
             array(
                 'settings' => array(
                     'coursegroupmode' => SEPARATEGROUPS,
@@ -255,7 +256,7 @@ class externallib_test extends externallib_advanced_testcase {
      *
      * @dataProvider get_enrolled_users_visibility_provider
      */
-    public function test_get_enrolled_users_visibility($settings, $results) {
+    public function test_get_enrolled_users_visibility($settings, $results): void {
 
         global $USER;
 
@@ -327,8 +328,9 @@ class externallib_test extends externallib_advanced_testcase {
                 $this->expectExceptionMessage($exception['message']);
             } else {
                 // Failed, only canview and exception are supported.
-                $this->markTestIncomplete('Incomplete, only canview and exception are supported');
+                throw new \coding_exception('Incomplete, only canview and exception are supported');
             }
+
             // Switch to the user and assign the role.
             $this->setUser(${$user});
             role_assign($roleid, $USER->id, $coursecontext);
@@ -365,7 +367,7 @@ class externallib_test extends externallib_advanced_testcase {
     /**
      * Verify get_enrolled_users() returned users according to their status.
      */
-    public function test_get_enrolled_users_active_suspended() {
+    public function test_get_enrolled_users_active_suspended(): void {
         global $USER;
 
         $this->resetAfterTest();
@@ -454,7 +456,7 @@ class externallib_test extends externallib_advanced_testcase {
     /**
      * Test get_users_courses
      */
-    public function test_get_users_courses() {
+    public function test_get_users_courses(): void {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/completion/criteria/completion_criteria_self.php');
 
@@ -709,7 +711,7 @@ class externallib_test extends externallib_advanced_testcase {
     /**
      * Test get_users_courses with mathjax in the name.
      */
-    public function test_get_users_courses_with_mathjax() {
+    public function test_get_users_courses_with_mathjax(): void {
         global $DB;
 
         $this->resetAfterTest(true);
@@ -770,7 +772,7 @@ class externallib_test extends externallib_advanced_testcase {
     /**
      * Test get_course_enrolment_methods
      */
-    public function test_get_course_enrolment_methods() {
+    public function test_get_course_enrolment_methods(): void {
         global $DB;
 
         $this->resetAfterTest(true);
@@ -876,7 +878,7 @@ class externallib_test extends externallib_advanced_testcase {
      * Test get_enrolled_users from core_enrol_external without additional
      * parameters.
      */
-    public function test_get_enrolled_users_without_parameters() {
+    public function test_get_enrolled_users_without_parameters(): void {
         $capability = 'moodle/course:viewparticipants';
         $data = $this->get_enrolled_users_setup($capability);
 
@@ -894,7 +896,7 @@ class externallib_test extends externallib_advanced_testcase {
     /**
      * Test get_enrolled_users from core_enrol_external with some parameters set.
      */
-    public function test_get_enrolled_users_with_parameters() {
+    public function test_get_enrolled_users_with_parameters(): void {
         $capability = 'moodle/course:viewparticipants';
         $data = $this->get_enrolled_users_setup($capability);
 
@@ -919,7 +921,7 @@ class externallib_test extends externallib_advanced_testcase {
     /**
      * Test get_enrolled_users last course access.
      */
-    public function test_get_enrolled_users_including_lastcourseaccess() {
+    public function test_get_enrolled_users_including_lastcourseaccess(): void {
         global $DB;
         $capability = 'moodle/course:viewparticipants';
         $data = $this->get_enrolled_users_setup($capability);
@@ -959,7 +961,7 @@ class externallib_test extends externallib_advanced_testcase {
      * Test get_enrolled_users from core_enrol_external with capability to
      * viewparticipants removed.
      */
-    public function test_get_enrolled_users_without_capability() {
+    public function test_get_enrolled_users_without_capability(): void {
         $capability = 'moodle/course:viewparticipants';
         $data = $this->get_enrolled_users_setup($capability);
 
@@ -1011,7 +1013,7 @@ class externallib_test extends externallib_advanced_testcase {
     /**
      * Test get_enrolled_users_with_capability without additional paramaters.
      */
-    public function test_get_enrolled_users_with_capability_without_parameters() {
+    public function test_get_enrolled_users_with_capability_without_parameters(): void {
         $capability = 'moodle/course:viewparticipants';
         $data = $this->get_enrolled_users_with_capability_setup($capability);
 
@@ -1040,7 +1042,7 @@ class externallib_test extends externallib_advanced_testcase {
     /**
      * Test get_enrolled_users_with_capability
      */
-    public function test_get_enrolled_users_with_capability_with_parameters () {
+    public function test_get_enrolled_users_with_capability_with_parameters(): void {
         $capability = 'moodle/course:viewparticipants';
         $data = $this->get_enrolled_users_with_capability_setup($capability);
 
@@ -1073,7 +1075,7 @@ class externallib_test extends externallib_advanced_testcase {
     /**
      * Test get_enrolled_users last course access.
      */
-    public function test_get_enrolled_users_with_capability_including_lastcourseaccess() {
+    public function test_get_enrolled_users_with_capability_including_lastcourseaccess(): void {
         global $DB;
         $capability = 'moodle/course:viewparticipants';
         $data = $this->get_enrolled_users_with_capability_setup($capability);
@@ -1123,7 +1125,7 @@ class externallib_test extends externallib_advanced_testcase {
     /**
      * dataProvider for test_submit_user_enrolment_form().
      */
-    public function submit_user_enrolment_form_provider() {
+    public static function submit_user_enrolment_form_provider(): array {
         $now = new \DateTime();
 
         $nextmonth = clone($now);
@@ -1192,7 +1194,7 @@ class externallib_test extends externallib_advanced_testcase {
      * @param bool $validationerror The validationerror we are expecting to receive from the webservice.
      * @dataProvider submit_user_enrolment_form_provider
      */
-    public function test_submit_user_enrolment_form($customdata, $expectedresult, $validationerror) {
+    public function test_submit_user_enrolment_form($customdata, $expectedresult, $validationerror): void {
         global $CFG, $DB;
 
         $this->resetAfterTest(true);
@@ -1271,7 +1273,7 @@ class externallib_test extends externallib_advanced_testcase {
     /**
      * Test for core_enrol_external::unenrol_user_enrolment().
      */
-    public function test_unenerol_user_enrolment() {
+    public function test_unenerol_user_enrolment(): void {
         global $DB;
 
         $this->resetAfterTest(true);
@@ -1336,7 +1338,7 @@ class externallib_test extends externallib_advanced_testcase {
     /**
      * Test for core_enrol_external::test_search_users().
      */
-    public function test_search_users() {
+    public function test_search_users(): void {
         global $DB;
 
         $this->resetAfterTest(true);
@@ -1419,6 +1421,71 @@ class externallib_test extends externallib_advanced_testcase {
         // Search for invalid first name.
         $result = core_enrol_external::search_users($course1->id, 'yada yada', true, 0, 30);
         $this->assertCount(0, $result);
+    }
+
+    /**
+     * Test for core_enrol_external::search_users() when group mode is active.
+     * @covers ::search_users
+     */
+    public function test_search_users_groupmode(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $datagen = $this->getDataGenerator();
+
+        $studentroleid = $DB->get_field('role', 'id', ['shortname' => 'student'], MUST_EXIST);
+        $teacherroleid = $DB->get_field('role', 'id', ['shortname' => 'teacher'], MUST_EXIST);
+
+        $course = $datagen->create_course();
+
+        $student1 = $datagen->create_and_enrol($course);
+        $student2 = $datagen->create_and_enrol($course);
+        $student3 = $datagen->create_and_enrol($course);
+        $teacher1 = $datagen->create_and_enrol($course, 'teacher');
+        $teacher2 = $datagen->create_and_enrol($course, 'teacher');
+        $teacher3 = $datagen->create_and_enrol($course, 'teacher');
+        $teacher4 = $datagen->create_and_enrol($course, 'editingteacher');
+
+        // Create 2 groups.
+        $group1 = $datagen->create_group(['courseid' => $course->id]);
+        $group2 = $datagen->create_group(['courseid' => $course->id]);
+
+        // Add the users to the groups.
+        $datagen->create_group_member(['groupid' => $group1->id, 'userid' => $student1->id]);
+        $datagen->create_group_member(['groupid' => $group2->id, 'userid' => $student2->id]);
+        $datagen->create_group_member(['groupid' => $group2->id, 'userid' => $student3->id]);
+        $datagen->create_group_member(['groupid' => $group1->id, 'userid' => $teacher1->id]);
+        $datagen->create_group_member(['groupid' => $group2->id, 'userid' => $teacher1->id]);
+        $datagen->create_group_member(['groupid' => $group1->id, 'userid' => $teacher2->id]);
+
+        // Create the forum.
+        $record = new stdClass();
+        $record->introformat = FORMAT_HTML;
+        $record->course = $course->id;
+        $forum = self::getDataGenerator()->create_module('forum', $record, ['groupmode' => SEPARATEGROUPS]);
+        $contextid = $DB->get_field('context', 'id', ['instanceid' => $forum->cmid, 'contextlevel' => CONTEXT_MODULE]);
+
+        $this->setUser($teacher1);
+        $result = core_enrol_external::search_users($course->id, 'user', true, 0, 30, $contextid);
+        $this->assertCount(5, $result);
+
+        $this->setUser($teacher2);
+        $result = core_enrol_external::search_users($course->id, 'user', true, 0, 30, $contextid);
+        $this->assertCount(3, $result);
+
+        $this->setUser($teacher3);
+        $result = core_enrol_external::search_users($course->id, 'user', true, 0, 30, $contextid);
+        $this->assertCount(0, $result);
+
+        $this->setUser($teacher4);
+        $result = core_enrol_external::search_users($course->id, 'user', true, 0, 30, $contextid);
+        $this->assertCount(7, $result);
+
+        // Now change the group mode to no groups.
+        set_coursemodule_groupmode($forum->cmid, NOGROUPS);
+        $this->setUser($teacher1);
+        $result = core_enrol_external::search_users($course->id, 'user', true, 0, 30, $contextid);
+        $this->assertCount(7, $result);
     }
 
     /**

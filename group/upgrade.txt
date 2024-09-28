@@ -1,3 +1,8 @@
+=== 4.5 Onwards ===
+
+This file has been replaced by UPGRADING.md. See MDL-81125 for further information.
+
+===
 This files describes API changes in /group/*,
 information provided here is intended especially for developers.
 
@@ -7,6 +12,20 @@ information provided here is intended especially for developers.
   - `core_group_get_course_groups`
   - `core_group_get_course_user_groups`
   - `core_group_get_activity_allowed_groups`
+* Groups now have access to create GeoPattern default images based upon their ID with their associated course context.
+  This can be done by calling the following:
+       moodle_url::make_pluginfile_url(
+           $coursecontext->id,
+           'group',
+           'generated',
+           $group->id,
+           '/',
+           'group.svg'
+       );
+* Added group/grouping custom fields.
+* groups_get_members_join() now includes visibility checks for group memberships.
+* \core_group\visibility::sql_member_visibility_where() no longer prefixes the returned WHERE statement with AND, to
+  give the calling code greater flexibility about how to use it.
 
 === 4.2 ===
 * `\core_group\visibility` class added to support new `visibility` field in group records. This holds the visibility constants

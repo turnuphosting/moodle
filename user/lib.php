@@ -22,6 +22,10 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+use core\di;
+use core\hook;
+use core_user\hook\extend_user_menu;
+
 define('USER_FILTER_ENROLMENT', 1);
 define('USER_FILTER_GROUP', 2);
 define('USER_FILTER_LAST_ACCESS', 3);
@@ -150,33 +154,21 @@ function user_create_user($user, $updatepassword = true, $triggerevent = true) {
  *             This will not affect user_password_updated event triggering.
  */
 function user_update_user($user, $updatepassword = true, $triggerevent = true) {
-    global $DB, $CFG;
+    global $DB;
 
     // Set the timecreate field to the current time.
     if (!is_object($user)) {
         $user = (object) $user;
     }
 
-    // Communication api update for user.
-    if (core_communication\api::is_available()) {
-        $usercourses = enrol_get_users_courses($user->id);
-        $currentrecord = $DB->get_record('user', ['id' => $user->id]);
-        if (!empty($currentrecord) && isset($user->suspended) && $currentrecord->suspended !== $user->suspended) {
-            foreach ($usercourses as $usercourse) {
-                $communication = \core_communication\api::load_by_instance(
-                    'core_course',
-                    'coursecommunication',
-                    $usercourse->id
-                );
-                // If the record updated the suspended for a user.
-                if ($user->suspended === 0) {
-                    $communication->add_members_to_room([$user->id]);
-                } else if ($user->suspended === 1) {
-                    $communication->remove_members_from_room([$user->id]);
-                }
-            }
-        }
-    }
+    $currentrecord = $DB->get_record('user', ['id' => $user->id]);
+
+    // Dispatch the hook for pre user update actions.
+    $hook = new \core_user\hook\before_user_updated(
+        user: $user,
+        currentuserdata: $currentrecord,
+    );
+    \core\di::get(\core\hook\manager::class)->dispatch($hook);
 
     // Check username.
     if (isset($user->username)) {
@@ -207,7 +199,12 @@ function user_update_user($user, $updatepassword = true, $triggerevent = true) {
         unset($user->calendartype);
     }
 
-    $user->timemodified = time();
+    // Delete theme usage cache if the theme has been changed.
+    if (isset($user->theme)) {
+        if ($user->theme != $currentrecord->theme) {
+            theme_delete_used_in_context_cache($user->theme, $currentrecord->theme);
+        }
+    }
 
     // Validate user data object.
     $uservalidation = core_user::validate($user);
@@ -218,17 +215,36 @@ function user_update_user($user, $updatepassword = true, $triggerevent = true) {
         }
     }
 
-    $DB->update_record('user', $user);
+    $changedattributes = [];
+    foreach ($user as $attributekey => $attributevalue) {
+        // We explicitly want to ignore 'timemodified' attribute for checking, if an update is needed.
+        if (!property_exists($currentrecord, $attributekey) || $attributekey === 'timemodified') {
+            continue;
+        }
+        if ($currentrecord->{$attributekey} !== $attributevalue) {
+            $changedattributes[$attributekey] = $attributevalue;
+        }
+    }
+    if (!empty($changedattributes)) {
+        $changedattributes['timemodified'] = time();
+        $updaterecord = (object) $changedattributes;
+        $updaterecord->id = $currentrecord->id;
+        $DB->update_record('user', $updaterecord);
+    }
 
     if ($updatepassword) {
-        // Get full user record.
-        $updateduser = $DB->get_record('user', array('id' => $user->id));
+        // If there have been changes, update user record with changed attributes.
+        if (!empty($changedattributes)) {
+            foreach ($changedattributes as $attributekey => $attributevalue) {
+                $currentrecord->{$attributekey} = $attributevalue;
+            }
+        }
 
         // If password was set, then update its hash.
         if (isset($passwd)) {
-            $authplugin = get_auth_plugin($updateduser->auth);
+            $authplugin = get_auth_plugin($currentrecord->auth);
             if ($authplugin->can_change_password()) {
-                $authplugin->user_update_password($updateduser, $passwd);
+                $authplugin->user_update_password($currentrecord, $passwd);
             }
         }
     }
@@ -274,7 +290,7 @@ function user_get_default_fields() {
         'institution', 'interests', 'firstaccess', 'lastaccess', 'auth', 'confirmed',
         'idnumber', 'lang', 'theme', 'timezone', 'mailformat', 'description', 'descriptionformat',
         'city', 'country', 'profileimageurlsmall', 'profileimageurl', 'customfields',
-        'groups', 'roles', 'preferences', 'enrolledcourses', 'suspended', 'lastcourseaccess'
+        'groups', 'roles', 'preferences', 'enrolledcourses', 'suspended', 'lastcourseaccess', 'trackforums',
     );
 }
 
@@ -380,10 +396,9 @@ function user_get_user_details($user, $course = null, array $userfields = array(
         $userdetails['customfields'] = array();
         foreach ($categories as $categoryid => $fields) {
             foreach ($fields as $formfield) {
-                if ($formfield->is_visible() and !$formfield->is_empty()) {
-
+                if ($formfield->show_field_content()) {
                     $userdetails['customfields'][] = [
-                        'name' => $formfield->field->name,
+                        'name' => $formfield->display_name(),
                         'value' => $formfield->data,
                         'displayvalue' => $formfield->display_data(),
                         'type' => $formfield->field->datatype,
@@ -419,9 +434,7 @@ function user_get_user_details($user, $course = null, array $userfields = array(
         $hiddenfields = array_flip(explode(',', $CFG->hiddenuserfields));
     }
 
-
-    if (!empty($user->address) && (in_array('address', $userfields)
-            && in_array('address', $showuseridentityfields) || $isadmin)) {
+    if (!empty($user->address) && (in_array('address', $userfields) || $isadmin)) {
         $userdetails['address'] = $user->address;
     }
     if (!empty($user->phone1) && (in_array('phone1', $userfields)
@@ -587,7 +600,7 @@ function user_get_user_details($user, $course = null, array $userfields = array(
     }
 
     if ($currentuser or has_capability('moodle/user:viewalldetails', $context)) {
-        $extrafields = ['auth', 'confirmed', 'lang', 'theme', 'mailformat'];
+        $extrafields = ['auth', 'confirmed', 'lang', 'theme', 'mailformat', 'trackforums'];
         foreach ($extrafields as $extrafield) {
             if (in_array($extrafield, $userfields) && isset($user->$extrafield)) {
                 $userdetails[$extrafield] = $user->$extrafield;
@@ -711,13 +724,7 @@ function user_count_login_failures($user, $reset = true) {
  * @return array
  */
 function user_convert_text_to_menu_items($text, $page) {
-    global $OUTPUT, $CFG;
-
     $lines = explode("\n", $text);
-    $items = array();
-    $lastchild = null;
-    $lastdepth = null;
-    $lastsort = 0;
     $children = array();
     foreach ($lines as $line) {
         $line = trim($line);
@@ -745,8 +752,9 @@ function user_convert_text_to_menu_items($text, $page) {
         // Name processing.
         $namebits = explode(',', $bits[0], 2);
         if (count($namebits) == 2) {
+            $namebits[1] = $namebits[1] ?: 'core';
             // Check the validity of the identifier part of the string.
-            if (clean_param($namebits[0], PARAM_STRINGID) !== '') {
+            if (clean_param($namebits[0], PARAM_STRINGID) !== '' && clean_param($namebits[1], PARAM_COMPONENT) !== '') {
                 // Treat this as a language string.
                 $child->title = get_string($namebits[0], $namebits[1]);
                 $child->titleidentifier = implode(',', $namebits);
@@ -884,7 +892,7 @@ function user_get_user_navigation_info($user, $page, $options = array()) {
 
                 // Get login failures string.
                 $a = new stdClass();
-                $a->attempts = html_writer::tag('span', $count, array('class' => 'value mr-1 font-weight-bold'));
+                $a->attempts = html_writer::tag('span', $count, array('class' => 'value me-1 font-weight-bold'));
                 $returnobject->metadata['userloginfail'] =
                     get_string('failedloginattempts', '', $a);
 
@@ -903,6 +911,14 @@ function user_get_user_navigation_info($user, $page, $options = array()) {
         if ($item->itemtype !== 'divider' && $item->itemtype !== 'invalid') {
             $custommenucount++;
         }
+    }
+
+    // Call to hook to add menu items.
+    $hook = new extend_user_menu();
+    di::get(core\hook\manager::class)->dispatch($hook);
+    $hookitems = $hook->get_navitems();
+    foreach ($hookitems as $menuitem) {
+        $returnobject->navitems[] = $menuitem;
     }
 
     if ($custommenucount > 0) {
@@ -1004,7 +1020,7 @@ function user_get_user_navigation_info($user, $page, $options = array()) {
  * @param string $password plaintext password
  * @return void
  */
-function user_add_password_history($userid, $password) {
+function user_add_password_history(int $userid, #[\SensitiveParameter] string $password): void {
     global $CFG, $DB;
 
     if (empty($CFG->passwordreuselimit) or $CFG->passwordreuselimit < 0) {
@@ -1012,12 +1028,18 @@ function user_add_password_history($userid, $password) {
     }
 
     // Note: this is using separate code form normal password hashing because
-    //       we need to have this under control in the future. Also the auth
-    //       plugin might not store the passwords locally at all.
+    // we need to have this under control in the future. Also, the auth
+    // plugin might not store the passwords locally at all.
+
+    // First generate a cryptographically suitable salt.
+    $randombytes = random_bytes(16);
+    $salt = substr(strtr(base64_encode($randombytes), '+', '.'), 0, 16);
+    // Then create the hash.
+    $generatedhash = crypt($password, '$6$rounds=10000$' . $salt . '$');
 
     $record = new stdClass();
     $record->userid = $userid;
-    $record->hash = password_hash($password, PASSWORD_DEFAULT);
+    $record->hash = $generatedhash;
     $record->timecreated = time();
     $DB->insert_record('user_password_history', $record);
 

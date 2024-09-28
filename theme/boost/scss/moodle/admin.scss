@@ -367,14 +367,6 @@
     width: 4em;
 }
 
-#adminthemeselector table {
-    border-collapse: collapse;
-}
-
-#adminthemeselector .selectedtheme {
-    border: 1px solid $state-info-border;
-}
-
 .admin_colourpicker,
 .admin_colourpicker_preview {
     display: none;
@@ -435,11 +427,23 @@
     text-align: center;
 }
 
+#page-admin-index #page-content .alert a {
+    font-weight: normal;
+    text-decoration: underline;
+}
+
 // Plugins overview page at admin/plugins.php
 #page-admin-plugins {
     #plugins-overview-panel {
         .info {
             display: inline-block;
+            margin-right: 1em;
+
+            [data-filterby].active {
+                font-weight: bold;
+            }
+        }
+        .updateavailableinstallall {
             margin-right: 1em;
         }
     }

@@ -389,7 +389,7 @@ class repository_googledocs extends repository {
                     'title' => $gfile->name,
                     'path' => $this->build_node_path($gfile->id, $gfile->name, $path),
                     'date' => strtotime($gfile->modifiedTime),
-                    'thumbnail' => $OUTPUT->image_url(file_folder_icon(64))->out(false),
+                    'thumbnail' => $OUTPUT->image_url(file_folder_icon())->out(false),
                     'thumbnail_height' => 64,
                     'thumbnail_width' => 64,
                     'children' => array()
@@ -673,7 +673,7 @@ class repository_googledocs extends repository {
      * @param bool $forcedownload If true (default false), forces download of file rather than view in browser/plugin
      * @param array $options additional options affecting the file serving
      */
-    public function send_file($storedfile, $lifetime=null , $filter=0, $forcedownload=false, array $options = null) {
+    public function send_file($storedfile, $lifetime=null , $filter=0, $forcedownload=false, ?array $options = null) {
         if (!$this->issuer->get('enabled')) {
             throw new repository_exception('cannotdownload', 'repository');
         }

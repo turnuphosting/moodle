@@ -41,7 +41,6 @@ $string['activitydate:closes'] = 'Closes:';
 $string['activitydate:opened'] = 'Opened:';
 $string['activitydate:opens'] = 'Opens:';
 $string['aria:coursecategory'] = 'Course category';
-$string['aria:courseimage'] = 'Course image';
 $string['aria:courseshortname'] = 'Course short name';
 $string['aria:coursename'] = 'Course name';
 $string['aria:defaulttab'] = 'Default activities';
@@ -66,13 +65,14 @@ $string['completion_setby:manual:markdone'] = '{$a->activityname} is marked by {
 $string['completionrequirements'] = 'Completion requirements for {$a}';
 $string['courseaccess'] = 'Course access';
 $string['coursealreadyfinished'] = 'Course already finished';
-$string['coursecommunication_desc'] = 'The default communication service for the new courses. All the existing courses will not have any provider selected by default.';
+$string['coursecommunication_desc'] = 'The default communication service for new courses. Existing courses will not have any provider selected by default.';
 $string['coursecontentnotification'] = 'Send content change notification';
 $string['coursecontentnotifnew'] = '{$a->coursename} new content';
 $string['coursecontentnotifnewbody'] = '<p>{$a->moduletypename} <a href="{$a->link}">{$a->modulename}</a> is new in the course <a href="{$a->courselink}">{$a->coursename}</a>.</p><p><a href="{$a->notificationpreferenceslink}">Change your notification preferences</a></p>';
 $string['coursecontentnotifupdate'] = '{$a->coursename} content change';
 $string['coursecontentnotifupdatebody'] = '<p>{$a->moduletypename} <a href="{$a->link}">{$a->modulename}</a> has been changed in the course <a href="{$a->courselink}">{$a->coursename}</a>.</p><p><a href="{$a->notificationpreferenceslink}">Change your notification preferences</a></p>';
 $string['coursecontentnotification_help'] = 'Tick the box to notify course participants about this new or changed activity or resource. Only users who can access the activity or resource will receive the notification.';
+$string['coursecount'] = 'Course count';
 $string['coursenotyetstarted'] = 'The course has not yet started';
 $string['coursenotyetfinished'] = 'The course has not yet finished';
 $string['courseparticipants'] = 'Course participants';
@@ -85,7 +85,7 @@ $string['customfield_visibility_help'] = 'This setting determines who can view t
 $string['customfield_visibletoall'] = 'Everyone';
 $string['customfield_visibletoteachers'] = 'Teachers';
 $string['customfieldsettings'] = 'Common course custom fields settings';
-$string['daystakingcourse'] = 'Days taking course';
+$string['defaultsettingscategory'] = 'Default settings';
 $string['downloadcourseconfirmation'] = 'You are about to download a zip file of course content (excluding items which cannot be downloaded and any files larger than {$a}).';
 $string['downloadcoursecontent'] = 'Download course content';
 $string['downloadcoursecontent_help'] = 'This setting determines whether course content may be downloaded by users with the download course content capability (by default users with the role of student or teacher).';
@@ -96,6 +96,10 @@ The setting has no effect on mobile app content download for offline usage.';
 $string['enabledownloadcoursecontent'] = 'Enable download course content';
 $string['errorendbeforestart'] = 'The end date ({$a}) is before the course start date.';
 $string['favourite'] = 'Starred course';
+$string['filterbothactive'] = 'First ({$a->first}) Last ({$a->last})';
+$string['filterbyname'] = 'Filter by name';
+$string['filterfirstactive'] = 'First ({$a->first})';
+$string['filterlastactive'] = 'Last ({$a->last})';
 $string['gradetopassnotset'] = 'This course does not have a grade to pass set. It may be set in the grade item of the course (Gradebook setup).';
 $string['hideendedcoursestask'] = 'Hide courses on end date';
 $string['informationformodule'] = 'Information about the {$a} activity';
@@ -161,3 +165,11 @@ $string['targetlabelstudentgradetopassno'] = 'Student who is likely to meet the 
 $string['targetlabelstudentgradetopassyes'] = 'Student at risk of not meeting the minimum grade to pass the course.';
 $string['targetlabelteachingyes'] = 'Users with teaching capabilities who have access to the course';
 $string['targetlabelteachingno'] = 'Courses at risk of not starting';
+$string['totalactivities'] = 'Activities: {$a}';
+$string['gotosection'] = 'Go to section {$a}';
+
+// Deprecated since Moodle 4.3.
+$string['aria:courseimage'] = 'Course image';
+
+// Deprecated since Moodle 4.5.
+$string['daystakingcourse'] = 'Days taking course';

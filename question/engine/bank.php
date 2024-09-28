@@ -27,7 +27,12 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+use core_cache\application_cache;
+use core_cache\data_source_interface;
+use core_cache\definition;
+use core_question\local\bank\question_version_status;
 use core_question\output\question_version_info;
+
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -485,7 +490,7 @@ abstract class question_bank {
  * @copyright  2009 The Open University
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class question_finder implements cache_data_source {
+class question_finder implements data_source_interface {
     /** @var question_finder the singleton instance of this class. */
     protected static $questionfinder = null;
 
@@ -499,13 +504,13 @@ class question_finder implements cache_data_source {
         return self::$questionfinder;
     }
 
-    /* See cache_data_source::get_instance_for_cache. */
-    public static function get_instance_for_cache(cache_definition $definition) {
+    #[\Override]
+    public static function get_instance_for_cache(definition $definition) {
         return self::get_instance();
     }
 
     /**
-     * @return cache_application the question definition cache we are using.
+     * @return application_cache the question definition cache we are using.
      */
     protected function get_data_cache() {
         // Do not double cache here because it may break cache resetting.
@@ -531,8 +536,8 @@ class question_finder implements cache_data_source {
 
     /**
      * Get the ids of all the questions in a list of categories.
-     * @param array $categoryids either a categoryid, or a comma-separated list
-     *      category ids, or an array of them.
+     * @param array $categoryids either a category id, or a comma-separated list
+     *      of category ids, or an array of them.
      * @param string $extraconditions extra conditions to AND with the rest of
      *      the where clause. Must use named parameters.
      * @param array $extraparams any parameters used by $extraconditions.
@@ -547,7 +552,8 @@ class question_finder implements cache_data_source {
         if ($extraconditions) {
             $extraconditions = ' AND (' . $extraconditions . ')';
         }
-        $qcparams['readystatus'] = \core_question\local\bank\question_version_status::QUESTION_STATUS_READY;
+        $qcparams['readystatus'] = question_version_status::QUESTION_STATUS_READY;
+        $qcparams['readystatusqv'] = question_version_status::QUESTION_STATUS_READY;
         $sql = "SELECT q.id, q.id AS id2
                   FROM {question} q
                   JOIN {question_versions} qv ON qv.questionid = q.id
@@ -555,6 +561,12 @@ class question_finder implements cache_data_source {
                  WHERE qbe.questioncategoryid {$qcsql}
                        AND q.parent = 0
                        AND qv.status = :readystatus
+                       AND qv.version = (SELECT MAX(v.version)
+                                          FROM {question_versions} v
+                                          JOIN {question_bank_entries} be
+                                            ON be.id = v.questionbankentryid
+                                         WHERE be.id = qbe.id
+                                           AND v.status = :readystatusqv)
                        {$extraconditions}";
 
         return $DB->get_records_sql_menu($sql, $qcparams + $extraparams);
@@ -572,9 +584,16 @@ class question_finder implements cache_data_source {
      *      the where clause. Must use named parameters.
      * @param array $extraparams any parameters used by $extraconditions.
      * @return array questionid => count of number of previous uses.
+     *
+     * @deprecated since Moodle 4.3
+     * @todo Final deprecation on Moodle 4.7 MDL-78091
      */
     public function get_questions_from_categories_with_usage_counts($categoryids,
             qubaid_condition $qubaids, $extraconditions = '', $extraparams = array()) {
+        debugging(
+            'Function get_questions_from_categories_with_usage_counts() is deprecated, please do not use the function.',
+            DEBUG_DEVELOPER
+        );
         return $this->get_questions_from_categories_and_tags_with_usage_counts(
                 $categoryids, $qubaids, $extraconditions, $extraparams);
     }
@@ -592,14 +611,20 @@ class question_finder implements cache_data_source {
      * @param array $extraparams any parameters used by $extraconditions.
      * @param array $tagids an array of tag ids
      * @return array questionid => count of number of previous uses.
+     * @deprecated since Moodle 4.3
+     * @todo Final deprecation on Moodle 4.7 MDL-78091
      */
     public function get_questions_from_categories_and_tags_with_usage_counts($categoryids,
             qubaid_condition $qubaids, $extraconditions = '', $extraparams = array(), $tagids = array()) {
+        debugging(
+            'Function get_questions_from_categories_and_tags_with_usage_counts() is deprecated, please do not use the function.',
+            DEBUG_DEVELOPER
+        );
         global $DB;
 
         list($qcsql, $qcparams) = $DB->get_in_or_equal($categoryids, SQL_PARAMS_NAMED, 'qc');
 
-        $readystatus = \core_question\local\bank\question_version_status::QUESTION_STATUS_READY;
+        $readystatus = question_version_status::QUESTION_STATUS_READY;
         $select = "q.id, (SELECT COUNT(1)
                             FROM " . $qubaids->from_question_attempts('qa') . "
                            WHERE qa.questionid = q.id AND " . $qubaids->where() . "
@@ -651,7 +676,7 @@ class question_finder implements cache_data_source {
                 $qubaids->from_where_params() + $params + $extraparams);
     }
 
-    /* See cache_data_source::load_for_cache. */
+    #[\Override]
     public function load_for_cache($questionid) {
         global $DB;
 
@@ -675,7 +700,7 @@ class question_finder implements cache_data_source {
         return $questiondata;
     }
 
-    /* See cache_data_source::load_many_for_cache. */
+    #[\Override]
     public function load_many_for_cache(array $questionids) {
         global $DB;
 

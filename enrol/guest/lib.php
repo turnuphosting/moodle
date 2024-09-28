@@ -261,7 +261,7 @@ class enrol_guest_plugin extends enrol_plugin {
      * @param array instance fields
      * @return int id of new instance, null if can not be created
      */
-    public function add_instance($course, array $fields = NULL) {
+    public function add_instance($course, ?array $fields = NULL) {
         $fields = (array)$fields;
 
         if (!isset($fields['password'])) {
@@ -489,7 +489,83 @@ class enrol_guest_plugin extends enrol_plugin {
         return $errors;
     }
 
+    /**
+     * Check if enrolment plugin is supported in csv course upload.
+     *
+     * @return bool
+     */
+    public function is_csv_upload_supported(): bool {
+        return true;
+    }
 
+    /**
+     * Finds matching instances for a given course.
+     *
+     * @param array $enrolmentdata enrolment data.
+     * @param int $courseid Course ID.
+     * @return stdClass|null Matching instance
+     */
+    public function find_instance(array $enrolmentdata, int $courseid): ?stdClass {
+
+        $instances = enrol_get_instances($courseid, false);
+        $instance = null;
+        foreach ($instances as $i) {
+            if ($i->enrol == 'guest') {
+                // There can be only one guest enrol instance so find first available.
+                $instance = $i;
+                break;
+            }
+        }
+        return $instance;
+    }
+
+    /**
+     * Fill custom fields data for a given enrolment plugin.
+     *
+     * @param array $enrolmentdata enrolment data.
+     * @param int $courseid Course ID.
+     * @return array Updated enrolment data with custom fields info.
+     */
+    public function fill_enrol_custom_fields(array $enrolmentdata, int $courseid): array {
+        return $enrolmentdata + ['password' => ''];
+    }
+
+    /**
+     * Updates enrol plugin instance with provided data.
+     * @param int $courseid Course ID.
+     * @param array $enrolmentdata enrolment data.
+     * @param stdClass $instance Instance to update.
+     *
+     * @return stdClass updated instance
+     */
+    public function update_enrol_plugin_data(int $courseid, array $enrolmentdata, stdClass $instance): stdClass {
+        if (!empty($enrolmentdata['password'])) {
+            $instance->password = $enrolmentdata['password'];
+        }
+        return parent::update_enrol_plugin_data($courseid, $enrolmentdata, $instance);
+    }
+
+    /**
+     * Check if data is valid for a given enrolment plugin
+     *
+     * @param array $enrolmentdata enrolment data to validate.
+     * @param int|null $courseid Course ID.
+     * @return array Errors
+     */
+    public function validate_enrol_plugin_data(array $enrolmentdata, ?int $courseid = null): array {
+        // If password is omitted or empty in csv it will be generated automatically if it is a required policy.
+
+        $errors = parent::validate_enrol_plugin_data($enrolmentdata, $courseid);
+
+        $policy = $this->get_config('usepasswordpolicy');
+        if (!empty($enrolmentdata['password']) && $policy) {
+            $errarray = get_password_policy_errors($enrolmentdata['password']);
+            foreach ($errarray as $i => $err) {
+                $errors['enrol_guest' . $i] = $err;
+            }
+        }
+        return $errors;
+    }
 }
 
 /**
@@ -497,7 +573,7 @@ class enrol_guest_plugin extends enrol_plugin {
  */
 function enrol_guest_get_fontawesome_icon_map() {
     return [
-        'enrol_guest:withpassword' => 'fa-key',
-        'enrol_guest:withoutpassword' => 'fa-unlock-alt',
+        'enrol_guest:withoutpassword' => 'fa-lock-open',
+        'enrol_guest:withpassword' => 'fa-lock',
     ];
 }

@@ -126,7 +126,7 @@ class core_webservice_renderer extends plugin_renderer_base {
             $link = html_writer::link($settingsurl, fullname($user));
 
             if (!empty($user->missingcapabilities)) {
-                $count = html_writer::span(count($user->missingcapabilities), 'badge badge-danger');
+                $count = html_writer::span(count($user->missingcapabilities), 'badge bg-danger text-white');
                 $links = array_map(function($capname) {
                     return get_capability_docs_link((object)['name' => $capname]) . html_writer::div($capname, 'text-muted');
                 }, $user->missingcapabilities);
@@ -565,7 +565,6 @@ EOF;
      * @return string HTML code
      */
     public function colored_box_with_pre_tag($title, $content, $rgb = 'FEEBE5') {
-        //TODO MDL-31192 this tag removes xhtml strict error but cause warning
         $coloredbox = html_writer::start_tag('div', array());
         $coloredbox .= html_writer::start_tag('div',
                         array('style' => "border:solid 1px #DEDEDE;background:#" . $rgb
@@ -674,7 +673,7 @@ EOF;
 
             $tags = '';
             if (!empty($description->deprecated)) {
-                $tags .= ' ' . html_writer::span(get_string('deprecated', 'core_webservice'), 'badge badge-warning');
+                $tags .= ' ' . html_writer::span(get_string('deprecated', 'core_webservice'), 'badge bg-warning text-dark');
             }
 
             if (empty($printableformat)) {
@@ -706,7 +705,7 @@ EOF;
             $documentationhtml .= $br;
             foreach ($description->parameters_desc->keys as $paramname => $paramdesc) {
                 // a argument documentation
-                $documentationhtml .= html_writer::start_tag('span', array('style' => 'font-size:80%'));
+                $documentationhtml .= html_writer::start_tag('div', ['style' => 'font-size:80%']);
 
                 if ($paramdesc->required == VALUE_REQUIRED) {
                     $required = get_string('required', 'webservice');
@@ -752,7 +751,7 @@ EOF;
                                                     $paramdesc, $paramname), ENT_COMPAT),
                                     'FEEBE5');
                 }
-                $documentationhtml .= html_writer::end_tag('span');
+                $documentationhtml .= html_writer::end_tag('div');
             }
             $documentationhtml .= $br . $br;
 
@@ -763,7 +762,7 @@ EOF;
             $documentationhtml .= html_writer::end_tag('span');
             $documentationhtml .= $br;
             // function response description
-            $documentationhtml .= html_writer::start_tag('span', array('style' => 'font-size:80%'));
+            $documentationhtml .= html_writer::start_tag('div', ['style' => 'font-size:80%']);
             if (!empty($description->returns_desc->desc)) {
                 $documentationhtml .= $description->returns_desc->desc;
                 $documentationhtml .= $br . $br;
@@ -795,7 +794,7 @@ EOF;
                                     'FEEBE5');
                 }
             }
-            $documentationhtml .= html_writer::end_tag('span');
+            $documentationhtml .= html_writer::end_tag('div');
             $documentationhtml .= $br . $br;
 
             // function errors documentation for REST protocol
@@ -804,7 +803,7 @@ EOF;
                 $documentationhtml .= get_string('errorcodes', 'webservice');
                 $documentationhtml .= html_writer::end_tag('span');
                 $documentationhtml .= $br . $br;
-                $documentationhtml .= html_writer::start_tag('span', array('style' => 'font-size:80%'));
+                $documentationhtml .= html_writer::start_tag('div', ['style' => 'font-size:80%']);
                 $errormessage = get_string('invalidparameter', 'debug');
                 $restexceptiontext = <<<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -818,7 +817,7 @@ EOF;
                                 htmlentities($restexceptiontext, ENT_COMPAT),
                                 'FEEBE5');
 
-                $documentationhtml .= html_writer::end_tag('span');
+                $documentationhtml .= html_writer::end_tag('div');
             }
             $documentationhtml .= $br . $br;
 

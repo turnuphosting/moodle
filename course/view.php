@@ -36,7 +36,7 @@ $show = optional_param('show', 0, PARAM_INT);
 $duplicatesection = optional_param('duplicatesection', 0, PARAM_INT);
 $idnumber = optional_param('idnumber', '', PARAM_RAW);
 $sectionid = optional_param('sectionid', 0, PARAM_INT);
-$section = optional_param('section', 0, PARAM_INT);
+$section = optional_param('section', null, PARAM_INT);
 $expandsection = optional_param('expandsection', -1, PARAM_INT);
 $move = optional_param('move', 0, PARAM_INT);
 $marker = optional_param('marker', -1 , PARAM_INT);
@@ -62,7 +62,7 @@ $urlparams = ['id' => $course->id];
 if ($sectionid) {
     $section = $DB->get_field('course_sections', 'section', ['id' => $sectionid, 'course' => $course->id], MUST_EXIST);
 }
-if ($section) {
+if (!is_null($section)) {
     $urlparams['section'] = $section;
 }
 if ($expandsection !== -1) {
@@ -202,11 +202,28 @@ if ($PAGE->user_allowed_editing()) {
     if (has_capability('moodle/course:sectionvisibility', $context)) {
         if ($hide && confirm_sesskey()) {
             set_section_visible($course->id, $hide, '0');
-            redirect($PAGE->url);
+            if ($sectionid) {
+                redirect(course_get_url($course, $section, ['navigation' => true]));
+            } else {
+                redirect($PAGE->url);
+            }
         }
 
         if ($show && confirm_sesskey()) {
             set_section_visible($course->id, $show, '1');
+            if ($sectionid) {
+                redirect(course_get_url($course, $section, ['navigation' => true]));
+            } else {
+                redirect($PAGE->url);
+            }
+        }
+    }
+
+    if ($marker >= 0 && confirm_sesskey()) {
+        course_set_marker($course->id, $marker);
+        if ($sectionid) {
+            redirect(course_get_url($course, $section, ['navigation' => true]));
+        } else {
             redirect($PAGE->url);
         }
     }
@@ -259,19 +276,25 @@ if ($PAGE->user_allowed_editing()) {
     $PAGE->set_button($buttons);
 }
 
+$editingtitle = '';
+if ($PAGE->user_is_editing()) {
+    // Append this to the page title's lang string to get its equivalent when editing mode is turned on.
+    $editingtitle = 'editing';
+}
+
 // If viewing a section, make the title more specific.
 if ($section && $section > 0 && course_format_uses_sections($course->format)) {
     $sectionname = get_string('sectionname', "format_$course->format");
     $sectiontitle = get_section_name($course, $section);
     $PAGE->set_title(
         get_string(
-            'coursesectiontitle',
+            'coursesectiontitle' . $editingtitle,
             'moodle',
             ['course' => $course->fullname, 'sectiontitle' => $sectiontitle, 'sectionname' => $sectionname]
         )
     );
 } else {
-    $PAGE->set_title(get_string('coursetitle', 'moodle', ['course' => $course->fullname]));
+    $PAGE->set_title(get_string('coursetitle' . $editingtitle, 'moodle', ['course' => $course->fullname]));
 }
 
 // Add bulk editing control.
@@ -284,13 +307,8 @@ $PAGE->set_heading($course->fullname);
 echo $OUTPUT->header();
 
 // Show communication room status notification.
-if (core_communication\api::is_available() && has_capability('moodle/course:update', $context)) {
-    $communication = \core_communication\api::load_by_instance(
-        'core_course',
-        'coursecommunication',
-        $course->id
-    );
-    $communication->show_communication_room_status_notification();
+if (has_capability('moodle/course:update', $context)) {
+    core_communication\helper::get_course_communication_status_notification($course);
 }
 
 if ($USER->editing == 1) {

@@ -30,7 +30,7 @@ class maketestcourse_test extends \advanced_testcase {
     /**
      * Creates a small test course and checks all the components have been put in place.
      */
-    public function test_make_xs_course() {
+    public function test_make_xs_course(): void {
         global $DB;
 
         $this->resetAfterTest();
@@ -68,9 +68,14 @@ class maketestcourse_test extends \advanced_testcase {
         $this->assertEquals(2, count($modinfo->get_section_info_all()));
 
         // Check user is enrolled.
+        // enroladminnewcourse is enabled by default, so admin is also enrolled as teacher.
         $users = get_enrolled_users($context);
-        $this->assertEquals(1, count($users));
-        $this->assertEquals('tool_generator_000001', reset($users)->username);
+        $this->assertEquals(2, count($users));
+        $usernames = array_map(function($user) {
+            return $user->username;
+        }, $users);
+        $this->assertTrue(in_array('admin', $usernames));
+        $this->assertTrue(in_array('tool_generator_000001', $usernames));
 
         // Check there's a page on the course.
         $pages = $modinfo->get_instances_of('page');
@@ -132,7 +137,7 @@ class maketestcourse_test extends \advanced_testcase {
     /**
      * Creates an small test course with fixed data set and checks the used sections and users.
      */
-    public function test_fixed_data_set() {
+    public function test_fixed_data_set(): void {
 
         $this->resetAfterTest();
         $this->setAdminUser();
@@ -173,7 +178,7 @@ class maketestcourse_test extends \advanced_testcase {
     /**
      * Creates a small test course specifying a maximum size and checks the generated files size is limited.
      */
-    public function test_filesize_limit() {
+    public function test_filesize_limit(): void {
 
         $this->resetAfterTest();
         $this->setAdminUser();

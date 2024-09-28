@@ -63,8 +63,8 @@ class user_submission_actionmenu implements templatable, renderable {
      * @param stdClass|null $teamsubmission A team submission for this activity.
      * @param int $timelimit The time limit for completing this activity.
      */
-    public function __construct(int $cmid, bool $showsubmit, bool $showedit, stdClass $submission = null,
-            stdClass $teamsubmission = null, int $timelimit = 0) {
+    public function __construct(int $cmid, bool $showsubmit, bool $showedit, ?stdClass $submission = null,
+            ?stdClass $teamsubmission = null, int $timelimit = 0) {
 
         $this->cmid = $cmid;
         $this->showsubmit = $showsubmit;
@@ -131,7 +131,8 @@ class user_submission_actionmenu implements templatable, renderable {
             }
             if ($status === ASSIGN_SUBMISSION_STATUS_NEW) {
 
-                if ($this->timelimit && empty($this->submission->timestarted)) {
+                $timelimitenabled = get_config('assign', 'enabletimelimit');
+                if ($timelimitenabled && $this->timelimit && empty($this->submission->timestarted)) {
                     $confirmation = new \confirm_action(
                         get_string('confirmstart', 'assign', format_time($this->timelimit)),
                         null,

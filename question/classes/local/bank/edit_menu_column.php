@@ -53,6 +53,7 @@ class edit_menu_column extends column_base {
 
         $menu = new \action_menu();
         $menu->set_menu_trigger(get_string('edit'));
+        $menu->set_boundary('window');
         foreach ($actions as $action) {
             $action = $action->get_action_menu_link($question);
             if ($action) {
@@ -69,7 +70,7 @@ class edit_menu_column extends column_base {
         echo $OUTPUT->render($menu);
     }
 
-    public function get_required_fields():array {
+    public function get_required_fields(): array {
         return ['q.qtype'];
     }
 
@@ -83,7 +84,7 @@ class edit_menu_column extends column_base {
     }
 
     public function get_extra_classes(): array {
-        return ['pr-3'];
+        return ['pe-3'];
     }
 
 }

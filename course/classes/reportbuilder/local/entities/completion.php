@@ -42,17 +42,17 @@ use stdClass;
 class completion extends base {
 
     /**
-     * Database tables that this entity uses and their default aliases
+     * Database tables that this entity uses
      *
-     * @return array
+     * @return string[]
      */
-    protected function get_default_table_aliases(): array {
+    protected function get_default_tables(): array {
         return [
-            'course_completion' => 'ccomp',
-            'course' => 'c',
-            'grade_grades' => 'gg',
-            'grade_items' => 'gi',
-            'user' => 'u',
+            'course_completion',
+            'course',
+            'grade_grades' ,
+            'grade_items',
+            'user',
         ];
     }
 
@@ -91,11 +91,13 @@ class completion extends base {
      * @return column[]
      */
     protected function get_all_columns(): array {
-        $coursecompletion = $this->get_table_alias('course_completion');
-        $course = $this->get_table_alias('course');
-        $grade = $this->get_table_alias('grade_grades');
-        $gradeitem = $this->get_table_alias('grade_items');
-        $user = $this->get_table_alias('user');
+        [
+            'course_completion' => $coursecompletion,
+            'course' => $course,
+            'grade_grades' => $grade,
+            'grade_items' => $gradeitem,
+            'user' => $user,
+        ] = $this->get_table_aliases();
 
         // Completed column.
         $columns[] = (new column(
@@ -105,15 +107,14 @@ class completion extends base {
         ))
             ->add_joins($this->get_joins())
             ->set_type(column::TYPE_BOOLEAN)
-            ->add_field("CASE WHEN {$coursecompletion}.timecompleted > 0 THEN 1 ELSE 0 END", 'completed')
-            ->add_field("{$user}.id", 'userid')
+            ->add_field("
+                CASE
+                    WHEN {$coursecompletion}.id IS NULL THEN NULL
+                    WHEN {$coursecompletion}.timecompleted > 0 THEN 1
+                    ELSE 0
+                END", 'completed')
             ->set_is_sortable(true)
-            ->add_callback(static function(bool $value, stdClass $row): string {
-                if (!$row->userid) {
-                    return '';
-                }
-                return format::boolean_as_text($value);
-            });
+            ->add_callback([format::class, 'boolean_as_text']);
 
         // Completion criteria column.
         $criterias = database::generate_alias();
@@ -223,21 +224,22 @@ class completion extends base {
         $currenttime = time();
         $columns[] = (new column(
             'dayscourse',
-            new lang_string('daystakingcourse', 'course'),
+            new lang_string('daystakingcourse', 'completion'),
             $this->get_entity_name()
         ))
             ->add_joins($this->get_joins())
             ->set_type(column::TYPE_INTEGER)
             ->add_field("(
                 CASE
-                    WHEN {$coursecompletion}.timecompleted > 0 THEN
+                    WHEN {$coursecompletion}.id IS NULL THEN NULL
+                    ELSE (CASE WHEN {$coursecompletion}.timecompleted > 0 THEN
                         {$coursecompletion}.timecompleted
-                    ELSE
+                        ELSE
                         {$currenttime}
-                END - {$course}.startdate) / " . DAYSECS, 'dayscourse')
-            ->add_field("{$user}.id", 'userid')
+                    END - {$course}.startdate)
+                END)", 'dayscourse')
             ->set_is_sortable(true)
-            ->add_callback([completion_formatter::class, 'get_days']);
+            ->set_callback([format::class, 'format_time']);
 
         // Days since last completion (days since last enrolment date until completion or until current date if not completed).
         $columns[] = (new column(
@@ -249,14 +251,15 @@ class completion extends base {
             ->set_type(column::TYPE_INTEGER)
             ->add_field("(
                 CASE
-                    WHEN {$coursecompletion}.timecompleted > 0 THEN
+                    WHEN {$coursecompletion}.id IS NULL THEN NULL
+                    ELSE (CASE WHEN {$coursecompletion}.timecompleted > 0 THEN
                         {$coursecompletion}.timecompleted
-                    ELSE
+                        ELSE
                         {$currenttime}
-                END - {$coursecompletion}.timeenrolled) / " . DAYSECS, 'daysuntilcompletion')
-            ->add_field("{$user}.id", 'userid')
+                    END - {$coursecompletion}.timeenrolled)
+                END)", 'daysuntilcompletion')
             ->set_is_sortable(true)
-            ->add_callback([completion_formatter::class, 'get_days']);
+            ->set_callback([format::class, 'format_time']);
 
         // Student course grade.
         $columns[] = (new column(
@@ -273,11 +276,11 @@ class completion extends base {
                 LEFT JOIN {grade_grades} {$grade}
                        ON ({$user}.id = {$grade}.userid AND {$gradeitem}.id = {$grade}.itemid)
             ")
-            ->set_type(column::TYPE_INTEGER)
+            ->set_type(column::TYPE_FLOAT)
             ->add_fields("{$grade}.finalgrade")
             ->set_is_sortable(true)
-            ->add_callback(function ($value) {
-                if (!$value) {
+            ->add_callback(function(?float $value): string {
+                if ($value === null) {
                     return '';
                 }
                 return format_float($value, 2);

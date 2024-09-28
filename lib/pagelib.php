@@ -31,6 +31,7 @@ use core\navigation\views\primary;
 use core\navigation\views\secondary;
 use core\navigation\output\primary as primaryoutput;
 use core\output\activity_header;
+use core\output\xhtml_container_stack;
 
 /**
  * $PAGE is a central store of information about the current page we are
@@ -78,7 +79,7 @@ use core\output\activity_header;
  *      course table. (Also available as $COURSE global.) If we are not inside
  *      an actual course, this will be the site course.
  * @property-read string $devicetypeinuse The name of the device type in use
- * @property-read string $docspath The path to the Help and documentation.
+ * @property-read string $docspath The path to the Documentation for this page.
  * @property-read string $focuscontrol The id of the HTML element to be focused when the page has loaded.
  * @property-read bool $headerprinted True if the page header has already been printed.
  * @property-read string $heading The main heading that should be displayed at the top of the <body>.
@@ -123,6 +124,11 @@ class moodle_page {
      * complete.
      */
     const STATE_DONE = 3;
+
+    /**
+     * The separator used for separating page title elements.
+     */
+    const TITLE_SEPARATOR = ' | ';
 
     /**
      * @var int The current state of the page. The state a page is within
@@ -209,7 +215,7 @@ class moodle_page {
     protected $_subpage = '';
 
     /**
-     * @var string Set a different path to use for the 'Help and documentation' link.
+     * @var string Set a different path to use for the 'Documentation for this page' link.
      * By default, it uses the path of the file for instance mod/quiz/attempt.
      */
     protected $_docspath = null;
@@ -426,6 +432,11 @@ class moodle_page {
      * @var bool Whether to override/remove all editing capabilities for blocks on the page.
      */
     protected $_forcelockallblocks = false;
+
+    /**
+     * @var bool Indicates whether the course index drawer should be shown.
+     */
+    protected bool $_showcourseindex = true;
 
     /**
      * Force the settings menu to be displayed on this page. This will only force the
@@ -653,7 +664,7 @@ class moodle_page {
 
     /**
      * Please do not call this method directly, use the ->docspath syntax. {@link moodle_page::__get()}.
-     * @return string the path to the Help and documentation.
+     * @return string the path to the Documentation for this page.
      */
     protected function magic_get_docspath() {
         if (is_string($this->_docspath)) {
@@ -868,22 +879,15 @@ class moodle_page {
     /**
      * Returns the secondary navigation object
      *
-     * @todo MDL-74939 Remove support for old 'local\views\secondary' class location
      * @return secondary
      */
     protected function magic_get_secondarynav() {
         if ($this->_secondarynav === null) {
             $class = 'core\navigation\views\secondary';
-            // Try and load a custom class first.
+
+            // Check whether activity defines its own secondary navigation.
             if (class_exists("mod_{$this->activityname}\\navigation\\views\\secondary")) {
                 $class = "mod_{$this->activityname}\\navigation\\views\\secondary";
-            } else if (class_exists("mod_{$this->activityname}\\local\\views\\secondary")) {
-                // For backwards compatibility, support the old location for this class (it was in a
-                // 'local' namespace which shouldn't be used for core APIs).
-                debugging("The class mod_{$this->activityname}}\\local\\views\\secondary uses a deprecated " .
-                        "namespace. Please move it to mod_{$this->activityname}\\navigation\\views\\secondary.",
-                        DEBUG_DEVELOPER);
-                $class = "mod_{$this->activityname}\\local\\views\\secondary";
             }
 
             $this->_secondarynav = new $class($this);
@@ -1024,9 +1028,6 @@ class moodle_page {
      * by the get_fragment() web service and not for use elsewhere.
      */
     public function start_collecting_javascript_requirements() {
-        global $CFG;
-        require_once($CFG->libdir.'/outputfragmentrequirementslib.php');
-
         // Check that the requirements manager has not already been switched.
         if (get_class($this->_requires) == 'fragment_requirements_manager') {
             throw new coding_exception('JavaScript collection has already been started.');
@@ -1096,6 +1097,18 @@ class moodle_page {
         if ($this->subpage) {
             $summary .= 'Sub-page ' . $this->subpage .  '. ';
         }
+
+        // Display deprecated icons in the console (if any).
+        $summary .= <<< EOF
+            <script type="text/javascript">
+            //<![CDATA[
+            document.querySelectorAll('.icon.deprecated').forEach((icon) => {
+                window.console.warn("Deprecated icon found: " + icon.className);
+            });
+            //]]>
+            </script>
+        EOF;
+
         return $summary;
     }
 
@@ -1173,7 +1186,7 @@ class moodle_page {
     /**
      * Set the main context to which this page belongs.
      *
-     * @param context $context a context object. You normally get this with context_xxxx::instance().
+     * @param ?context $context a context object. You normally get this with context_xxxx::instance().
      */
     public function set_context($context) {
         if ($context === null) {
@@ -1298,7 +1311,7 @@ class moodle_page {
      * in the standard theme.
      *
      * For an idea of the common page layouts see
-     * {@link http://docs.moodle.org/dev/Themes_2.0#The_different_layouts_as_of_August_17th.2C_2010}
+     * {@link https://docs.moodle.org/dev/Themes_overview#Layouts}
      * But please keep in mind that it may be (and normally is) out of date.
      * The only place to find an accurate up-to-date list of the page layouts
      * available for your version of Moodle is {@link theme/base/config.php}
@@ -1367,14 +1380,47 @@ class moodle_page {
 
     /**
      * Sets the title for the page.
+     *
      * This is normally used within the title tag in the head of the page.
      *
+     * Some tips for providing a meaningful page title:
+     * - The page title must be accurate and informative.
+     * - If the page causes a change of context (e.g. a search functionality), it should describe the result or change of context
+     *   to the user.
+     * - It should be concise.
+     * - If possible, it should uniquely identify the page.
+     * - The most identifying information should come first. (e.g. Submit assignment | Assignment | Moodle)
+     *
+     * For more information, see
+     * {@link https://www.w3.org/WAI/WCAG21/Understanding/page-titled Understanding Success Criterion 2.4.2: Page Titled}
+     *
      * @param string $title the title that should go in the <head> section of the HTML of this page.
+     * @param bool $appendsitename Appends site name at the end of the given title. It is encouraged to append the site name as this
+     *                              especially helps with accessibility. If it's necessary to override this, please keep in mind
+     *                              to ensure that the title provides a concise summary of the page being displayed.
      */
-    public function set_title($title) {
+    public function set_title($title, bool $appendsitename = true) {
+        global $CFG;
+
         $title = format_string($title);
         $title = strip_tags($title);
         $title = str_replace('"', '&quot;', $title);
+
+        if ($appendsitename) {
+            // Append the site name at the end of the page title.
+            $sitenamedisplay = 'shortname';
+            if (!empty($CFG->sitenameintitle)) {
+                $sitenamedisplay = $CFG->sitenameintitle;
+            }
+            $site = get_site();
+            if (empty(trim($site->{$sitenamedisplay} ?? ''))) {
+                // If for some reason the site name is not yet set, fall back to 'Moodle'.
+                $title .= self::TITLE_SEPARATOR . 'Moodle';
+            } else {
+                $title .= self::TITLE_SEPARATOR . format_string($site->{$sitenamedisplay});
+            }
+        }
+
         $this->_title = $title;
     }
 
@@ -1384,9 +1430,10 @@ class moodle_page {
      *
      * @param string $heading the main heading that should be displayed at the top of the <body>.
      * @param bool $applyformatting apply format_string() - by default true.
+     * @param bool $clean whether the heading should be cleaned or not when no formatting is applied - by default true.
      */
-    public function set_heading($heading, bool $applyformatting = true) {
-        $this->_heading = $applyformatting ? format_string($heading) : clean_text($heading);
+    public function set_heading($heading, bool $applyformatting = true, bool $clean = true) {
+        $this->_heading = $applyformatting ? format_string($heading) : ($clean ? clean_text($heading) : $heading);
     }
 
     /**
@@ -1424,7 +1471,7 @@ class moodle_page {
     }
 
     /**
-     * Set a different path to use for the 'Help and documentation' link.
+     * Set a different path to use for the 'Documentation for this page' link.
      *
      * By default, it uses the pagetype, which is normally the same as the
      * script name. So, for example, for mod/quiz/attempt.php, pagetype is
@@ -1449,7 +1496,7 @@ class moodle_page {
      * @param array $params parameters to add to the URL
      * @throws coding_exception
      */
-    public function set_url($url, array $params = null) {
+    public function set_url($url, ?array $params = null) {
         global $CFG;
 
         if (is_string($url) && strpos($url, 'http') !== 0) {
@@ -1778,11 +1825,7 @@ class moodle_page {
                     '/settings.php?section=maintenancemode">' . get_string('maintenancemode', 'admin') .
                     '</a> ' . $this->button);
 
-            $title = $this->title;
-            if ($title) {
-                $title .= ' - ';
-            }
-            $this->set_title($title . get_string('maintenancemode', 'admin'));
+            $this->set_title(get_string('maintenancemode', 'admin'));
         }
 
         $this->initialise_standard_body_classes();
@@ -1852,8 +1895,6 @@ class moodle_page {
     /**
      * Reset the theme and output for a new context. This only makes sense from
      * external::validate_context(). Do not cheat.
-     *
-     * @return string the name of the theme that should be used on this page.
      */
     public function reset_theme_and_output() {
         global $COURSE, $SITE;
@@ -2080,6 +2121,10 @@ class moodle_page {
 
         if ($this->_devicetypeinuse != 'default') {
             $this->add_body_class($this->_devicetypeinuse . 'theme');
+        }
+
+        if (!empty($CFG->themedesignermode)) {
+            $this->add_body_class('themedesignermode');
         }
 
         // Add class for behat site to apply behat related fixes.
@@ -2321,7 +2366,7 @@ class moodle_page {
      *
      * @param string $html The HTML to add.
      */
-    public function add_header_action(string $html) : void {
+    public function add_header_action(string $html): void {
         $this->_headeractions[] = $html;
     }
 
@@ -2330,7 +2375,7 @@ class moodle_page {
      *
      * @return string[]
      */
-    public function get_header_actions() : array {
+    public function get_header_actions(): array {
         return $this->_headeractions;
     }
 
@@ -2340,7 +2385,7 @@ class moodle_page {
      *
      * @param bool $value If the settings should be in the header.
      */
-    public function set_include_region_main_settings_in_header_actions(bool $value) : void {
+    public function set_include_region_main_settings_in_header_actions(bool $value): void {
         $this->_regionmainsettingsinheader = $value;
     }
 
@@ -2350,7 +2395,7 @@ class moodle_page {
      *
      * @return bool
      */
-    public function include_region_main_settings_in_header_actions() : bool {
+    public function include_region_main_settings_in_header_actions(): bool {
         return $this->_regionmainsettingsinheader;
     }
 
@@ -2389,7 +2434,7 @@ class moodle_page {
      *
      * @param string $navkey the key of the secondary nav node to be activated.
      */
-    public function set_secondary_active_tab(string $navkey) : void {
+    public function set_secondary_active_tab(string $navkey): void {
         $this->_activekeysecondary = $navkey;
     }
 
@@ -2437,5 +2482,25 @@ class moodle_page {
      */
     public function get_navigation_overflow_state(): bool {
         return $this->_navigationoverflow;
+    }
+
+    /**
+     * Set the status for displaying the course index.
+     *
+     * @param bool $state
+     *     - `true` (default) if the course index should be shown.
+     *     - `false` if the course index should be hidden.
+     */
+    public function set_show_course_index(bool $state): void {
+        $this->_showcourseindex = $state;
+    }
+
+    /**
+     * Get the current status for displaying the course index.
+     *
+     * @return bool
+     */
+    public function get_show_course_index(): bool {
+        return $this->_showcourseindex;
     }
 }

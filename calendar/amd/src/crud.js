@@ -24,7 +24,6 @@ define([
     'jquery',
     'core/str',
     'core/notification',
-    'core/modal_factory',
     'core/modal_events',
     'core_calendar/modal_event_form',
     'core_calendar/repository',
@@ -32,19 +31,22 @@ define([
     'core_calendar/modal_delete',
     'core_calendar/selectors',
     'core/pending',
+    'core/modal_save_cancel',
+    'core/config',
 ],
 function(
     $,
     Str,
     Notification,
-    ModalFactory,
     ModalEvents,
     ModalEventForm,
     CalendarRepository,
     CalendarEvents,
-    ModalDelete,
+    CalendarModalDelete,
     CalendarSelectors,
-    Pending
+    Pending,
+    ModalSaveCancel,
+    Config,
 ) {
 
     /**
@@ -77,11 +79,7 @@ function(
                 },
             });
 
-            deletePromise = ModalFactory.create(
-                {
-                    type: ModalDelete.TYPE
-                }
-            );
+            deletePromise = CalendarModalDelete.create();
         } else {
             deleteStrings.push({
                 key: 'confirmeventdelete',
@@ -90,9 +88,7 @@ function(
             });
 
 
-            deletePromise = ModalFactory.create({
-                type: ModalFactory.types.SAVE_CANCEL,
-            });
+            deletePromise = ModalSaveCancel.create();
         }
 
         var stringsPromise = Str.get_strings(deleteStrings);
@@ -151,10 +147,7 @@ function(
      * @return {object} The create modal promise
      */
     var registerEventFormModal = function(root) {
-        var eventFormPromise = ModalFactory.create({
-            type: ModalEventForm.TYPE,
-            large: true
-        });
+        var eventFormPromise = ModalEventForm.create();
 
         // Bind click event on the new event button.
         root.on('click', CalendarSelectors.actions.create, function(e) {
@@ -162,7 +155,8 @@ function(
                 var wrapper = root.find(CalendarSelectors.wrapper);
 
                 var categoryId = wrapper.data('categoryid');
-                if (typeof categoryId !== 'undefined') {
+                const courseId = wrapper.data('courseid');
+                if (typeof categoryId !== 'undefined' && courseId != Config.siteId) {
                     modal.setCategoryId(categoryId);
                 }
 
@@ -179,7 +173,7 @@ function(
                 modal.show();
                 return;
             })
-            .fail(Notification.exception);
+            .catch(Notification.exception);
 
             e.preventDefault();
         });
@@ -201,7 +195,7 @@ function(
 
                 e.stopImmediatePropagation();
                 return;
-            }).fail(Notification.exception);
+            }).catch(Notification.exception);
         });
 
 

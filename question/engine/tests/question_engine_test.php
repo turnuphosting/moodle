@@ -45,6 +45,7 @@ class question_engine_test extends advanced_testcase {
         global $CFG;
 
         require_once("{$CFG->dirroot}/question/engine/lib.php");
+        parent::setUpBeforeClass();
     }
 
     /**
@@ -299,7 +300,6 @@ class question_engine_test extends advanced_testcase {
         $renderer = new \core_question_renderer($PAGE, 'core_question');
         $rc = new \ReflectionClass($renderer);
         $rcm = $rc->getMethod('number');
-        $rcm->setAccessible(true);
 
         $this->assertEquals($expected, $rcm->invoke($renderer, $value));
     }

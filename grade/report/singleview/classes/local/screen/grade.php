@@ -24,6 +24,7 @@
 
 namespace gradereport_singleview\local\screen;
 
+use grade_report;
 use gradereport_singleview\local\ui\range;
 use gradereport_singleview\local\ui\bulk_insert;
 use grade_grade;
@@ -151,7 +152,7 @@ class grade extends tablelike implements selectable_items, filterable_items {
      */
     public function init($selfitemisempty = false) {
 
-        $this->items = get_gradable_users($this->courseid, $this->groupid);
+        $this->items = grade_report::get_gradable_users($this->courseid, $this->groupid);
         $this->totalitemcount = count($this->items);
 
         if ($selfitemisempty) {
@@ -196,7 +197,7 @@ class grade extends tablelike implements selectable_items, filterable_items {
         return [
             get_string('fullnameuser', 'core'),
             '', // For filter icon.
-            get_string('grade', 'grades'),
+            get_string('gradenoun'),
             get_string('range', 'grades'),
             get_string('feedback', 'grades'),
             get_string('override', 'gradereport_singleview'),
@@ -215,24 +216,21 @@ class grade extends tablelike implements selectable_items, filterable_items {
 
         $grade = $this->fetch_grade_or_default($this->item, $item->id);
 
-        $lockicon = '';
+        $gradestatus = '';
+        $context = [
+            'hidden' => $grade->is_hidden(),
+            'locked' => $grade->is_locked(),
+        ];
 
-        $lockedgrade = $lockedgradeitem = 0;
-        if (!empty($grade->locked)) {
-            $lockedgrade = 1;
-        }
-        if (!empty($grade->grade_item->locked)) {
-            $lockedgradeitem = 1;
-        }
-        // Check both grade and grade item.
-        if ( $lockedgrade || $lockedgradeitem ) {
-            $lockicon = $OUTPUT->pix_icon('t/locked', 'grade is locked') . ' ';
+        if (in_array(true, $context)) {
+            $context['classes'] = 'gradestatus';
+            $gradestatus = $OUTPUT->render_from_template('core_grades/status_icons', $context);
         }
 
         if (has_capability('moodle/site:viewfullnames', \context_course::instance($this->courseid))) {
-            $fullname = $lockicon . fullname($item, true);
+            $fullname = fullname($item, true);
         } else {
-            $fullname = $lockicon . fullname($item);
+            $fullname = fullname($item);
         }
 
         $item->imagealt = $fullname;
@@ -245,7 +243,7 @@ class grade extends tablelike implements selectable_items, filterable_items {
         $line = [
             html_writer::link($url, $userpic . $fullname),
             $this->get_user_action_menu($item),
-            $formatteddefinition['finalgrade'],
+            $formatteddefinition['finalgrade'] . $gradestatus,
             $this->item_range(),
             $formatteddefinition['feedback'],
             $formatteddefinition['override'],
@@ -323,7 +321,9 @@ class grade extends tablelike implements selectable_items, filterable_items {
      * @return string
      */
     public function heading(): string {
-        return get_string('gradeitem', 'gradereport_singleview', $this->item->get_name());
+        global $PAGE;
+        $headinglangstring = $PAGE->user_is_editing() ? 'gradeitemedit' : 'gradeitem';
+        return get_string($headinglangstring, 'gradereport_singleview', $this->item->get_name());
     }
 
     /**

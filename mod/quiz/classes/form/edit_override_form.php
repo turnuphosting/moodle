@@ -56,18 +56,21 @@ class edit_override_form extends moodleform {
     /** @var int userid, if provided. */
     protected $userid;
 
+    /** @var int overrideid, if provided. */
+    protected int $overrideid;
+
     /**
      * Constructor.
      *
      * @param moodle_url $submiturl the form action URL.
-     * @param cm_info|stdClass $cm course module object.
+     * @param cm_info $cm course module object.
      * @param stdClass $quiz the quiz settings object.
      * @param context_module $context the quiz context.
      * @param bool $groupmode editing group override (true) or user override (false).
      * @param stdClass|null $override the override being edited, if it already exists.
      */
     public function __construct(moodle_url $submiturl,
-            cm_info|stdClass $cm, stdClass $quiz, context_module $context,
+            cm_info $cm, stdClass $quiz, context_module $context,
             bool $groupmode, ?stdClass $override) {
 
         $this->cm = $cm;
@@ -76,6 +79,7 @@ class edit_override_form extends moodleform {
         $this->groupmode = $groupmode;
         $this->groupid = empty($override->groupid) ? 0 : $override->groupid;
         $this->userid = empty($override->userid) ? 0 : $override->userid;
+        $this->overrideid = $override->id ?? 0;
 
         parent::__construct($submiturl);
     }
@@ -96,7 +100,7 @@ class edit_override_form extends moodleform {
             if ($this->groupid) {
                 // There is already a groupid, so freeze the selector.
                 $groupchoices = [
-                    $this->groupid => format_string(groups_get_group_name($this->groupid), true, $this->context),
+                    $this->groupid => format_string(groups_get_group_name($this->groupid), true, ['context' => $this->context]),
                 ];
                 $mform->addElement('select', 'groupid',
                         get_string('overridegroup', 'quiz'), $groupchoices);
@@ -114,7 +118,7 @@ class edit_override_form extends moodleform {
                 $groupchoices = [];
                 foreach ($groups as $group) {
                     if ($group->visibility != GROUPS_VISIBILITY_NONE) {
-                        $groupchoices[$group->id] = format_string($group->name, true, $this->context);
+                        $groupchoices[$group->id] = format_string($group->name, true, ['context' => $this->context]);
                     }
                 }
                 unset($groups);
@@ -154,7 +158,7 @@ class edit_override_form extends moodleform {
                         $this->context, $userfieldsql->mappings);
 
                 $users = $DB->get_records_sql("
-                        SELECT $userfieldsql->selects
+                        SELECT DISTINCT $userfieldsql->selects
                           FROM {user} u
                           $enrolledjoin->joins
                           $userfieldsql->joins
@@ -261,42 +265,28 @@ class edit_override_form extends moodleform {
         return $username;
     }
 
+    /**
+     * Validate the data from the form.
+     *
+     * @param  array $data form data
+     * @param  array $files form files
+     * @return array An array of error messages, where the key is is the mform element name and the value is the error.
+     */
     public function validation($data, $files): array {
         $errors = parent::validation($data, $files);
+        $data['id'] = $this->overrideid;
+        $data['quiz'] = $this->quiz->id;
 
-        $mform =& $this->_form;
-        $quiz = $this->quiz;
+        $manager = new \mod_quiz\local\override_manager($this->quiz, $this->context);
+        $errors = array_merge($errors, $manager->validate_data($data));
 
-        if ($mform->elementExists('userid')) {
-            if (empty($data['userid'])) {
-                $errors['userid'] = get_string('required');
+        // Any 'general' errors we merge with the group/user selector element.
+        if (!empty($errors['general'])) {
+            if ($this->groupmode) {
+                $errors['groupid'] = $errors['groupid'] ?? "" . $errors['general'];
+            } else {
+                $errors['userid'] = $errors['userid'] ?? "" . $errors['general'];
             }
-        }
-
-        if ($mform->elementExists('groupid')) {
-            if (empty($data['groupid'])) {
-                $errors['groupid'] = get_string('required');
-            }
-        }
-
-        // Ensure that the dates make sense.
-        if (!empty($data['timeopen']) && !empty($data['timeclose'])) {
-            if ($data['timeclose'] < $data['timeopen'] ) {
-                $errors['timeclose'] = get_string('closebeforeopen', 'quiz');
-            }
-        }
-
-        // Ensure that at least one quiz setting was changed.
-        $changed = false;
-        $keys = ['timeopen', 'timeclose', 'timelimit', 'attempts', 'password'];
-        foreach ($keys as $key) {
-            if ($data[$key] != $quiz->{$key}) {
-                $changed = true;
-                break;
-            }
-        }
-        if (!$changed) {
-            $errors['timeopen'] = get_string('nooverridedata', 'quiz');
         }
 
         return $errors;

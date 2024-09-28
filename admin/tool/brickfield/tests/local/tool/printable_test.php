@@ -29,7 +29,7 @@ class printable_test extends \advanced_testcase {
     /**
      * Test tool name.
      */
-    public function test_toolname() {
+    public function test_toolname(): void {
         $this->resetAfterTest();
 
         $object = new printable();
@@ -40,7 +40,7 @@ class printable_test extends \advanced_testcase {
     /**
      * Test tool short name.
      */
-    public function test_toolshortname() {
+    public function test_toolshortname(): void {
         $this->resetAfterTest();
 
         $object = new printable();
@@ -51,7 +51,7 @@ class printable_test extends \advanced_testcase {
     /**
      * Test plugin name.
      */
-    public function test_pluginname() {
+    public function test_pluginname(): void {
         $this->resetAfterTest();
 
         $object = new printable();
@@ -77,7 +77,7 @@ class printable_test extends \advanced_testcase {
     /**
      * Test get output.
      */
-    public function test_get_output() {
+    public function test_get_output(): void {
         $this->resetAfterTest();
         $category = $this->getDataGenerator()->create_category();
 
@@ -100,7 +100,7 @@ class printable_test extends \advanced_testcase {
         $object = new printable();
         $object->set_filter($filter);
         $output = $object->get_output();
-        $this->assertStringContainsString('<i class="icon fa fa-tachometer fa-fw "  title="Total activities" '.
+        $this->assertStringContainsString('<i class="icon fa fa-trophy fa-fw "  title="Total activities" '.
             'role="img" aria-label="Total activities">', $output);
     }
 }

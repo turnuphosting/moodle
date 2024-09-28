@@ -660,7 +660,6 @@ class page_wiki_comments extends page_wiki {
             $cell1 = new html_table_cell($OUTPUT->user_picture($user, array('popup' => true)));
             $cell2 = new html_table_cell(get_string('bynameondate', 'forum', $by));
             $cell3 = new html_table_cell();
-            $cell3->attributes['width'] = "80%";
             $cell4 = new html_table_cell();
             $cell5 = new html_table_cell();
 
@@ -835,7 +834,7 @@ class page_wiki_editcomment extends page_wiki {
 
         if ($this->format == 'html') {
             $com->action = 'edit';
-            $com->entrycomment_editor['text'] = $com->content;
+            $com->entrycomment_editor['text'] = clean_text($com->content, $this->format);
             $com->commentoptions = array('trusttext' => true, 'maxfiles' => 0);
 
             $this->form->set_data($com);
@@ -1968,7 +1967,7 @@ class page_wiki_restoreversion extends page_wiki {
         echo $OUTPUT->container_start('mt-2', 'wiki_restoreform');
         $yesbutton = new single_button($restoreurl, get_string('yes'), 'post');
         $nobutton = new single_button($return, get_string('no'), 'post');
-        $nobutton->class .= ' ml-2';
+        $nobutton->class .= ' ms-2';
         echo $OUTPUT->render($yesbutton);
         echo $OUTPUT->render($nobutton);
         echo $OUTPUT->container_end();
@@ -2217,7 +2216,7 @@ class page_wiki_viewversion extends page_wiki {
             $pageversion->content = file_rewrite_pluginfile_urls($pageversion->content, 'pluginfile.php', $this->modcontext->id, 'mod_wiki', 'attachments', $this->subwiki->id);
 
             $parseroutput = wiki_parse_content($pageversion->contentformat, $pageversion->content, $options);
-            $content = $OUTPUT->container(format_text($parseroutput['parsed_text'], FORMAT_HTML, array('overflowdiv'=>true)), false, '', '', true);
+            $content = $OUTPUT->container(format_text($parseroutput['parsed_text'], FORMAT_HTML, ['overflowdiv' => true]));
             echo $OUTPUT->box($content, 'generalbox wiki_contentbox');
 
         } else {

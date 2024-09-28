@@ -14,15 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-/**
- * Data generator.
- *
- * @package    core
- * @category   test
- * @copyright  2012 Petr Skoda {@link http://skodak.org}
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- */
-
 defined('MOODLE_INTERNAL') || die();
 
 /**
@@ -152,7 +143,7 @@ EOD;
      * @param array $options
      * @return stdClass user record
      */
-    public function create_user($record=null, array $options=null) {
+    public function create_user($record=null, ?array $options=null) {
         global $DB, $CFG;
         require_once($CFG->dirroot.'/user/lib.php');
 
@@ -286,7 +277,7 @@ EOD;
      * @param array $options
      * @return core_course_category course category record
      */
-    public function create_category($record=null, array $options=null) {
+    public function create_category($record=null, ?array $options=null) {
         $this->categorycount++;
         $i = $this->categorycount;
 
@@ -313,7 +304,7 @@ EOD;
      * @param array $options
      * @return stdClass cohort record
      */
-    public function create_cohort($record=null, array $options=null) {
+    public function create_cohort($record=null, ?array $options=null) {
         global $DB, $CFG;
         require_once("$CFG->dirroot/cohort/lib.php");
 
@@ -357,12 +348,13 @@ EOD;
 
     /**
      * Create a test course
-     * @param array|stdClass $record
+     * @param array|stdClass $record Apart from the course information, the following can be also set:
+     *      'initsections' => bool for section name initialization, renaming them to "Section X". Default value is 0 (false).
      * @param array $options with keys:
-     *      'createsections'=>bool precreate all sections
+     *      'createsections' => bool precreate all sections
      * @return stdClass course record
      */
-    public function create_course($record=null, array $options=null) {
+    public function create_course($record=null, ?array $options=null) {
         global $DB, $CFG;
         require_once("$CFG->dirroot/course/lib.php");
 
@@ -427,10 +419,39 @@ EOD;
             }
         }
 
+        $initsections = !empty($record['initsections']);
+        unset($record['initsections']);
+
         $course = create_course((object)$record);
+        if ($initsections) {
+            $this->init_sections($course);
+        }
         context_course::instance($course->id);
 
         return $course;
+    }
+
+    /**
+     * Initializes sections for a specified course, such as configuring section names for courses using 'Section X'.
+     *
+     * @param stdClass $course The course object.
+     */
+    private function init_sections(stdClass $course): void {
+        global $DB;
+
+        $sections = $DB->get_records('course_sections', ['course' => $course->id], 'section');
+        foreach ($sections as $section) {
+            if ($section->section != 0) {
+                $DB->set_field(
+                    table: 'course_sections',
+                    newfield: 'name',
+                    newvalue: get_string('section', 'core') . ' ' . $section->section,
+                    conditions: [
+                        'id' => $section->id,
+                    ],
+                );
+            }
+        }
     }
 
     /**
@@ -440,7 +461,7 @@ EOD;
      * @return section_info
      * @throws coding_exception
      */
-    public function create_course_section($record = null, array $options = null) {
+    public function create_course_section($record = null, ?array $options = null) {
         global $DB;
 
         $record = (array)$record;
@@ -498,7 +519,7 @@ EOD;
      * @return stdClass activity record new new record that was just inserted in the table
      *      like 'forum' or 'quiz', with a ->cmid field added.
      */
-    public function create_module($modulename, $record=null, array $options=null) {
+    public function create_module($modulename, $record=null, ?array $options=null) {
         $generator = $this->get_plugin_generator('mod_'.$modulename);
         return $generator->create_instance($record, $options);
     }
@@ -673,7 +694,7 @@ EOD;
      * @return stdClass repository instance record
      * @since Moodle 2.5.1
      */
-    public function create_repository($type, $record=null, array $options = null) {
+    public function create_repository($type, $record=null, ?array $options = null) {
         $generator = $this->get_plugin_generator('repository_'.$type);
         return $generator->create_instance($record, $options);
     }
@@ -687,7 +708,7 @@ EOD;
      * @return repository_type object
      * @since Moodle 2.5.1
      */
-    public function create_repository_type($type, $record=null, array $options = null) {
+    public function create_repository_type($type, $record=null, ?array $options = null) {
         $generator = $this->get_plugin_generator('repository_'.$type);
         return $generator->create_type($record, $options);
     }
@@ -699,7 +720,7 @@ EOD;
      * @param array $options
      * @return stdClass block instance record
      */
-    public function create_scale($record=null, array $options=null) {
+    public function create_scale($record=null, ?array $options=null) {
         global $DB;
 
         $this->scalecount++;
@@ -875,7 +896,7 @@ EOD;
      * @param array $rolecapabilities The list of capability =>permission to set for this role
      * @param null|context $context The context to apply this capability to
      */
-    public function create_role_capability(int $roleid, array $rolecapabilities, context $context = null): void {
+    public function create_role_capability(int $roleid, array $rolecapabilities, ?context $context = null): void {
         // Map the capabilities into human-readable names.
         $allpermissions = [
             'inherit' => CAP_INHERIT,
@@ -1326,7 +1347,7 @@ EOD;
      * @param   array $data Array with data['name'] of category
      * @return  \core_customfield\category_controller   The created category
      */
-    public function create_custom_field_category($data) : \core_customfield\category_controller {
+    public function create_custom_field_category($data): \core_customfield\category_controller {
         return $this->get_plugin_generator('core_customfield')->create_category($data);
     }
 
@@ -1336,7 +1357,7 @@ EOD;
      * @param   array $data Array with 'name', 'shortname' and 'type' of the field
      * @return  \core_customfield\field_controller   The created field
      */
-    public function create_custom_field($data) : \core_customfield\field_controller {
+    public function create_custom_field($data): \core_customfield\field_controller {
         global $DB;
         if (empty($data['categoryid']) && !empty($data['category'])) {
             $data['categoryid'] = $DB->get_field('customfield_category', 'id', ['name' => $data['category']]);
@@ -1507,6 +1528,60 @@ EOD;
         $recordid = $DB->insert_record('user_lastaccess', $record);
 
         return $DB->get_record('user_lastaccess', ['id' => $recordid], '*', MUST_EXIST);
+    }
+
+    /**
+     * Generate a stored_progress record and return the ID.
+     *
+     * All fields are optional, required fields will be generated if not supplied.
+     *
+     * @param ?string $idnumber The unique ID Number for this stored progress.
+     * @param ?int $timestart The time progress was started, defaults to now.
+     * @param ?int $lastupdate The time the progress was last updated.
+     * @param float $percent The percentage progress so far.
+     * @param ?string $message An error message.
+     * @param ?bool $haserrored Whether the process has encountered an error.
+     * @return stdClass The record including the inserted id.
+     * @throws dml_exception
+     */
+    public function create_stored_progress(
+        ?string $idnumber = null,
+        ?int $timestart = null,
+        ?int $lastupdate = null,
+        float $percent = 0.00,
+        ?string $message = null,
+        ?bool $haserrored = false,
+    ): stdClass {
+        global $DB;
+        $record = (object)[
+            'idnumber' => $idnumber ?? random_string(),
+            'timestart' => $timestart ?? time(),
+            'lastupdate' => $lastupdate,
+            'percentcompleted' => $percent,
+            'message' => $message,
+            'haserrored' => $haserrored,
+        ];
+        $record->id = $DB->insert_record('stored_progress', $record);
+        return $record;
+    }
+
+    /**
+     * Generate a stored progress record from an array of fields.
+     *
+     * For use as a behat createable entity. Use {@see self::create_stored_progress()} if calling directly.
+     *
+     * @param array $data
+     * @return void
+     */
+    public function create_stored_progress_bar(array $data): void {
+        $this->create_stored_progress(
+            $data['idnumber'] ?? null,
+            $data['timestart'] ?? null,
+            $data['lastupdate'] ?? null,
+            $data['percent'] ?? 0.00,
+            $data['message'] ?? null,
+            $data['haserrored'] ?? false,
+        );
     }
 
     /**

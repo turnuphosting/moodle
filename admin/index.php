@@ -40,13 +40,6 @@ if (!function_exists('iconv')) {
     die();
 }
 
-// Make sure php5-json is available.
-if (!function_exists('json_encode') || !function_exists('json_decode')) {
-    // This also shouldn't happen.
-    echo 'Moodle requires the json PHP extension. Please install or enable the json extension.';
-    die();
-}
-
 // Make sure xml extension is available.
 if (!extension_loaded('xml')) {
     echo 'Moodle requires the xml PHP extension. Please install or enable the xml extension.';
@@ -224,7 +217,7 @@ if (!core_tables_exist()) {
         $strlicense = get_string('license');
 
         $PAGE->navbar->add($strlicense);
-        $PAGE->set_title($strinstallation.' - Moodle '.$CFG->target_release);
+        $PAGE->set_title($strinstallation . moodle_page::TITLE_SEPARATOR . 'Moodle ' . $CFG->target_release, false);
         $PAGE->set_heading($strinstallation);
         $PAGE->set_cacheable(false);
 
@@ -267,7 +260,7 @@ if (!core_tables_exist()) {
     upgrade_init_javascript();
 
     $PAGE->navbar->add($strdatabasesetup);
-    $PAGE->set_title($strinstallation.' - Moodle '.$CFG->target_release);
+    $PAGE->set_title($strinstallation . moodle_page::TITLE_SEPARATOR . $CFG->target_release, false);
     $PAGE->set_heading($strinstallation);
     $PAGE->set_cacheable(false);
 
@@ -818,7 +811,7 @@ $context = context_system::instance();
 
 if (!has_capability('moodle/site:config', $context)) {
     // Do not throw exception display an empty page with administration menu if visible for current user.
-    $PAGE->set_title($SITE->fullname);
+    $PAGE->set_title(get_string('home'));
     $PAGE->set_heading($SITE->fullname);
     echo $OUTPUT->header();
     echo $OUTPUT->footer();

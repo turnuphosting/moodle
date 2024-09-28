@@ -28,6 +28,7 @@ require_once $CFG->dirroot.'/grade/lib.php';
 require_once $CFG->dirroot.'/grade/report/user/lib.php';
 
 $courseid = required_param('id', PARAM_INT);
+// 0 - view all reports. null - view own report. non-zero and non-null - view other user report.
 $userid   = optional_param('userid', null, PARAM_INT);
 $userview = optional_param('userview', 0, PARAM_INT);
 
@@ -93,6 +94,11 @@ if (has_capability('moodle/grade:viewall', $context)) {
     // Verify if we are using groups or not.
     $groupmode = groups_get_course_groupmode($course);
     $currentgroup = $gpr->groupid;
+    // Conditionally add the group JS if we have groups enabled.
+    if ($groupmode) {
+        $baseurl = new moodle_url('/grade/report/user/index.php', ['id' => $courseid]);
+        $PAGE->requires->js_call_amd('core_course/actionbar/group', 'init', [$baseurl->out(false)]);
+    }
 
     // To make some other functions work better later.
     if (!$currentgroup) {
@@ -113,7 +119,7 @@ if (has_capability('moodle/grade:viewall', $context)) {
         $userid = $lastvieweduserid;
     }
 
-    $gradableusers = get_gradable_users($courseid, $currentgroup);
+    $gradableusers = grade_report::get_gradable_users($courseid, $currentgroup);
     // Validate whether the requested user is a valid gradable user in this course. If, not display the user select
     // zero state.
     if (empty($gradableusers) || ($userid && !array_key_exists($userid, $gradableusers))) {
@@ -160,13 +166,12 @@ if (has_capability('moodle/grade:viewall', $context)) {
             $report = new gradereport_user\report\user($courseid, $gpr, $context, $user->id, $viewasuser);
             $userheading = $gradesrenderer->user_heading($report->user, $courseid, false);
 
-            echo $OUTPUT->heading($userheading);
+            echo $userheading;
 
             if ($report->fill_table()) {
                 echo $report->print_table(true);
             }
         }
-        $gui->close();
     } else { // Show one user's report.
         // Store the id of the current user item in a session variable which represents the last viewed item.
         $SESSION->gradereport_user["useritem-{$context->id}"] = $userid;
@@ -174,9 +179,7 @@ if (has_capability('moodle/grade:viewall', $context)) {
         $report = new gradereport_user\report\user($courseid, $gpr, $context, $userid, $viewasuser);
         $actionbar = new \gradereport_user\output\action_bar($context, $userview, $report->user->id, $currentgroup);
 
-        print_grade_page_head($courseid, 'report', 'user',
-            $gradesrenderer->user_heading($report->user, $courseid),
-            false, false, true, null, null, null, $actionbar);
+        print_grade_page_head($courseid, 'report', 'user', false, false, false, true, null, null, $report->user, $actionbar);
 
         if ($currentgroup && !groups_is_member($currentgroup, $userid)) {
             echo $OUTPUT->notification(get_string('groupusernotmember', 'error'));
@@ -190,16 +193,15 @@ if (has_capability('moodle/grade:viewall', $context)) {
         $stickyfooter = new core\output\sticky_footer($userreportrenderer->user_navigation($gui, $userid, $courseid));
         echo $OUTPUT->render($stickyfooter);
     }
+
+    $gui->close();
 } else {
     // Students will see just their own report.
     // Create a report instance.
     $report = new gradereport_user\report\user($courseid, $gpr, $context, $userid ?? $USER->id);
-    $userheading = $gradesrenderer->user_heading($report->user, $courseid, false);
 
     // Print the page.
-    print_grade_page_head($courseid, 'report', 'user');
-
-    echo $OUTPUT->heading($userheading);
+    print_grade_page_head($courseid, 'report', 'user', false, false, false, true, null, null, $report->user);
 
     if ($report->fill_table()) {
         echo $report->print_table(true);

@@ -55,12 +55,16 @@ class controlmenu extends controlmenu_base {
         $section = $this->section;
         $coursecontext = $format->get_context();
 
-        $controls = [];
-        if ($section->section && has_capability('moodle/course:setcurrentsection', $coursecontext)) {
-            $controls['highlight'] = $this->get_highlight_control();
+        $parentcontrols = parent::section_control_items();
+
+        if ($section->is_orphan() || !$section->section) {
+            return $parentcontrols;
         }
 
-        $parentcontrols = parent::section_control_items();
+        $controls = [];
+        if (has_capability('moodle/course:setcurrentsection', $coursecontext)) {
+            $controls['highlight'] = $this->get_highlight_control();
+        }
 
         // If the edit key exists, we are going to insert our controls after it.
         if (array_key_exists("edit", $parentcontrols)) {
@@ -90,7 +94,7 @@ class controlmenu extends controlmenu_base {
         $format = $this->format;
         $section = $this->section;
         $course = $format->get_course();
-        $sectionreturn = $format->get_section_number();
+        $sectionreturn = $format->get_sectionnum();
 
         if ($sectionreturn) {
             $url = course_get_url($course, $section->section);
@@ -110,39 +114,50 @@ class controlmenu extends controlmenu_base {
         $format = $this->format;
         $section = $this->section;
         $course = $format->get_course();
+        $sectionreturn = $format->get_sectionnum();
         $url = $this->get_course_url();
+        if (!is_null($sectionreturn)) {
+            $url->param('sectionid', $format->get_sectionid());
+        }
 
         $highlightoff = get_string('highlightoff');
+        $highlightofficon = 'i/marked';
+
         $highlighton = get_string('highlight');
+        $highlightonicon = 'i/marker';
 
         if ($course->marker == $section->section) {  // Show the "light globe" on/off.
             $url->param('marker', 0);
             $result = [
                 'url' => $url,
-                'icon' => 'i/marked',
+                'icon' => $highlightofficon,
                 'name' => $highlightoff,
                 'pixattr' => ['class' => ''],
                 'attr' => [
                     'class' => 'editing_highlight',
                     'data-action' => 'sectionUnhighlight',
+                    'data-sectionreturn' => $sectionreturn,
                     'data-id' => $section->id,
+                    'data-icon' => $highlightofficon,
                     'data-swapname' => $highlighton,
-                    'data-swapicon' => 'i/marker',
+                    'data-swapicon' => $highlightonicon,
                 ],
             ];
         } else {
             $url->param('marker', $section->section);
             $result = [
                 'url' => $url,
-                'icon' => 'i/marker',
+                'icon' => $highlightonicon,
                 'name' => $highlighton,
                 'pixattr' => ['class' => ''],
                 'attr' => [
                     'class' => 'editing_highlight',
                     'data-action' => 'sectionHighlight',
+                    'data-sectionreturn' => $sectionreturn,
                     'data-id' => $section->id,
+                    'data-icon' => $highlightonicon,
                     'data-swapname' => $highlightoff,
-                    'data-swapicon' => 'i/marked',
+                    'data-swapicon' => $highlightofficon,
                 ],
             ];
         }

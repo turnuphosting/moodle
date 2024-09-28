@@ -53,6 +53,7 @@ class get_user_badge_by_hash_test extends externallib_advanced_testcase {
         // Create users and enrolments.
         $student1 = $this->getDataGenerator()->create_and_enrol($course);
         $student2 = $this->getDataGenerator()->create_and_enrol($course);
+        $student3 = $this->getDataGenerator()->create_and_enrol($course);
         $teacher  = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
 
         // Mock up a site badge.
@@ -96,7 +97,6 @@ class get_user_badge_by_hash_test extends externallib_advanced_testcase {
         $badge->dateissued = (int) $siteissuedbadge->dateissued;
         $badge->dateexpire = $siteissuedbadge->dateexpire;
         $badge->visible    = (int) $siteissuedbadge->visible;
-        $badge->email      = $student1->email;
         $context           = \context_system::instance();
         $badge->badgeurl   = \moodle_url::make_webservice_pluginfile_url($context->id, 'badges', 'badgeimage', $badge->id, '/',
                                                                             'f3')->out(false);
@@ -134,7 +134,7 @@ class get_user_badge_by_hash_test extends externallib_advanced_testcase {
 
         $badge->id     = $DB->insert_record('badge', $badge, true);
         $coursebadge   = new \badge($badge->id );
-        $coursebadge->issue($student1->id, true);
+        $coursebadge->issue($student2->id, true);
         $courseissuedbadge = $DB->get_record('badge_issued', [ 'badgeid' => $badge->id ]);
 
         $badge->issuername = $coursebadge->issuername;
@@ -146,7 +146,6 @@ class get_user_badge_by_hash_test extends externallib_advanced_testcase {
         $badge->dateissued = (int) $courseissuedbadge->dateissued;
         $badge->dateexpire = $courseissuedbadge->dateexpire;
         $badge->visible    = (int) $courseissuedbadge->visible;
-        $badge->email      = $student1->email;
         $context           = \context_course::instance($badge->courseid);
         $badge->badgeurl   = \moodle_url::make_webservice_pluginfile_url($context->id, 'badges', 'badgeimage', $badge->id , '/',
                                                                             'f3')->out(false);
@@ -168,7 +167,8 @@ class get_user_badge_by_hash_test extends externallib_advanced_testcase {
             'coursebadge' => $usercoursebadge,
             'sitebadge'   => $usersitebadge,
             'student1'    => $student1,
-            'student2'    => $student2
+            'student2'    => $student2,
+            'student3'    => $student3,
         ];
     }
 
@@ -177,7 +177,7 @@ class get_user_badge_by_hash_test extends externallib_advanced_testcase {
      * These are a basic tests since the badges_get_my_user_badges used by the external function already has unit tests.
      * @covers ::execute
      */
-    public function test_get_user_badge_by_hash() {
+    public function test_get_user_badge_by_hash(): void {
         $data = $this->prepare_test_data();
         $this->setUser($data['student1']);
 
@@ -185,12 +185,16 @@ class get_user_badge_by_hash_test extends externallib_advanced_testcase {
         $result = get_user_badge_by_hash::execute($data['sitebadge'][0]['uniquehash']);
         $result = \core_external\external_api::clean_returnvalue(get_user_badge_by_hash::execute_returns(), $result);
         $this->assertEquals($data['sitebadge'][0]['uniquehash'], $result['badge'][0]['uniquehash']);
+        $this->assertEquals($data['student1']->id, $result['badge'][0]['recipientid']);
+        $this->assertEquals(fullname($data['student1']), $result['badge'][0]['recipientfullname']);
         $this->assertEmpty($result['warnings']);
 
         // Course badge.
         $result = get_user_badge_by_hash::execute($data['coursebadge'][0]['uniquehash']);
         $result = \core_external\external_api::clean_returnvalue(get_user_badge_by_hash::execute_returns(), $result);
         $this->assertEquals($data['coursebadge'][0]['uniquehash'], $result['badge'][0]['uniquehash']);
+        $this->assertEquals($data['student2']->id, $result['badge'][0]['recipientid']);
+        $this->assertEquals(fullname($data['student2']), $result['badge'][0]['recipientfullname']);
         $this->assertEmpty($result['warnings']);
 
         // Wrong hash.
@@ -205,9 +209,9 @@ class get_user_badge_by_hash_test extends externallib_advanced_testcase {
      * Test get user badge by hash with restrictions.
      * @covers ::execute
      */
-    public function test_get_user_badge_by_hash_with_restrictions() {
+    public function test_get_user_badge_by_hash_with_restrictions(): void {
         $data = $this->prepare_test_data();
-        $this->setUser($data['student2']);
+        $this->setUser($data['student3']);
 
         // Site badge.
         $result = get_user_badge_by_hash::execute($data['sitebadge'][0]['uniquehash']);
@@ -216,20 +220,20 @@ class get_user_badge_by_hash_test extends externallib_advanced_testcase {
         $this->assertEmpty($result['warnings']);
 
         // Check that we don't have permissions for view the complete information for site badges.
-        if (isset($result['badge'][0]['type']) && $result['badge'][0]['type'] == BADGE_TYPE_SITE) {
-            $this->assertFalse(isset($result['badge'][0]['message']));
+        $this->assertArrayNotHasKey('message', $result['badge'][0]);
 
-            // Check that we have permissions to see all the data in alignments and related badges.
-            foreach ($result['badge'][0]['alignment'] as $alignment) {
-                $this->assertTrue(isset($alignment['id']));
-            }
+        // Check that we have permissions to see all the data in alignments and related badges.
+        $this->assertEquals([
+            $data['sitebadge'][0]['id'],
+            $data['sitebadge'][0]['id'],
+        ], array_column($result['badge'][0]['alignment'], 'badgeid'));
 
-            foreach ($result['badge'][0]['relatedbadges'] as $relatedbadge) {
-                $this->assertTrue(isset($relatedbadge['id']));
-            }
-        } else {
-            $this->assertTrue(isset($result['badge'][0]['message']));
-        }
+        $this->assertEquals([
+            [
+                'id' => $data['coursebadge'][0]['id'],
+                'name' => $data['coursebadge'][0]['name'],
+            ],
+        ], $result['badge'][0]['relatedbadges']);
 
         // Course badge.
         $result = get_user_badge_by_hash::execute($data['coursebadge'][0]['uniquehash']);
@@ -238,10 +242,6 @@ class get_user_badge_by_hash_test extends externallib_advanced_testcase {
         $this->assertEmpty($result['warnings']);
 
         // Check that we don't have permissions for view the complete information for course badges.
-        if (isset($result['badge'][0]['type']) && $result['badge'][0]['type'] == BADGE_TYPE_COURSE) {
-            $this->assertFalse(isset($result['badge'][0]['message']));
-        } else {
-            $this->assertTrue(isset($result['badge'][0]['message']));
-        }
+        $this->assertArrayNotHasKey('message', $result['badge'][0]);
     }
 }

@@ -929,10 +929,10 @@ class block_manager {
      * and incremented by the position of the block in the $blocks array
      *
      * @param array $blocks array with array keys the region names, and values an array of block names.
-     * @param string $pagetypepattern optional. Passed to {@link add_block()}
-     * @param string $subpagepattern optional. Passed to {@link add_block()}
-     * @param boolean $showinsubcontexts optional. Passed to {@link add_block()}
-     * @param integer $weight optional. Determines the starting point that the blocks are added in the region.
+     * @param string|null $pagetypepattern optional. Passed to {@see self::add_block()}
+     * @param string|null $subpagepattern optional. Passed to {@see self::add_block()}
+     * @param bool $showinsubcontexts optional. Passed to {@see self::add_block()}
+     * @param int $weight optional. Determines the starting point that the blocks are added in the region.
      */
     public function add_blocks($blocks, $pagetypepattern = NULL, $subpagepattern = NULL, $showinsubcontexts=false, $weight=0) {
         $initialweight = $weight;
@@ -943,6 +943,30 @@ class block_manager {
                 $this->add_block($blockname, $region, $weight, $showinsubcontexts, $pagetypepattern, $subpagepattern);
             }
         }
+    }
+
+    /**
+     * Given an array of blocks in the format used by {@see add_blocks}, removes any blocks from
+     * the list if they are not installed in the system.
+     *
+     * @param array $blocks Array keyed by region
+     * @return array Updated array
+     */
+    public function filter_nonexistent_blocks(array $blocks): array {
+        $installed = array_fill_keys(
+            array_map(fn($block) => $block->name, $this->get_installed_blocks()),
+            true,
+        );
+        $result = [];
+        foreach ($blocks as $region => $regionblocks) {
+            $result[$region] = [];
+            foreach ($regionblocks as $blockname) {
+                if (array_key_exists($blockname, $installed)) {
+                    $result[$region][] = $blockname;
+                }
+            }
+        }
+        return $result;
     }
 
     /**
@@ -1342,7 +1366,7 @@ class block_manager {
 
             $controls[] = new action_menu_link_secondary(
                 $editactionurl,
-                new pix_icon('t/edit', $str, 'moodle', array('class' => 'iconsmall', 'title' => '')),
+                new pix_icon('i/settings', $str, 'moodle', ['class' => 'iconsmall', 'title' => '']),
                 $str,
                 [
                     'class' => 'editing_edit',
@@ -1726,22 +1750,17 @@ class block_manager {
      * Convenience function to check whether a block is implementing a secondary nav class and return it
      * initialised to the calling function
      *
-     * @todo MDL-74939 Remove support for old 'local\views\secondary' class location
      * @param block_base $block
      * @return \core\navigation\views\secondary
      */
     protected function get_secondarynav(block_base $block): \core\navigation\views\secondary {
         $class = "core_block\\navigation\\views\\secondary";
+
+        // Check whether block defines its own secondary navigation.
         if (class_exists("block_{$block->name()}\\navigation\\views\\secondary")) {
             $class = "block_{$block->name()}\\navigation\\views\\secondary";
-        } else if (class_exists("block_{$block->name()}\\local\\views\\secondary")) {
-            // For backwards compatibility, support the old location for this class (it was in a
-            // 'local' namespace which shouldn't be used for core APIs).
-            debugging("The class block_{$block->name()}\\local\\views\\secondary uses a deprecated " .
-                    "namespace. Please move it to block_{$block->name()}\\navigation\\views\\secondary.",
-                    DEBUG_DEVELOPER);
-            $class = "block_{$block->name()}\\local\\views\\secondary";
         }
+
         $secondarynav = new $class($this->page);
         $secondarynav->initialise();
         return $secondarynav;
@@ -2128,7 +2147,7 @@ function block_instance_by_id($blockinstanceid) {
  * @param string $blockname the name of the block.
  * @param stdClass $instance block_instances DB table row (optional).
  * @param moodle_page $page the page this block is appearing on.
- * @return block_base the requested block instance.
+ * @return block_base|false the requested block instance.
  */
 function block_instance($blockname, $instance = NULL, $page = NULL) {
     if(!block_load_class($blockname)) {
@@ -2156,7 +2175,8 @@ function block_instance($blockname, $instance = NULL, $page = NULL) {
 function block_load_class($blockname) {
     global $CFG;
 
-    if(empty($blockname)) {
+    $blocknameclean = clean_param($blockname, PARAM_PLUGIN);
+    if (empty($blockname) || empty($blocknameclean)) {
         return false;
     }
 
@@ -2389,7 +2409,7 @@ function mod_page_type_list($pagetype, $parentcontext = null, $currentcontext = 
  * Return a {@link block_contents} representing the add a new block UI, if
  * this user is allowed to see it.
  *
- * @return block_contents an appropriate block_contents, or null if the user
+ * @return ?block_contents an appropriate block_contents, or null if the user
  * cannot add any blocks here.
  */
 function block_add_block_ui($page, $output) {
@@ -2601,7 +2621,7 @@ function blocks_set_visibility($instance, $page, $newvisibility) {
  *
  * @param $int blockid block type id. If null, an array of all block types is returned.
  * @param bool $notusedanymore No longer used.
- * @return array|object row from block table, or all rows.
+ * @return array|object|false row from block table, or all rows.
  */
 function blocks_get_record($blockid = NULL, $notusedanymore = false) {
     global $PAGE;
@@ -2684,6 +2704,9 @@ function blocks_get_default_site_course_blocks() {
 /**
  * Add the default blocks to a course.
  *
+ * Because this function is used on install, we skip over any default blocks that do not exist
+ * so that install can complete successfully even if blocks are removed.
+ *
  * @param object $course a course object.
  */
 function blocks_add_default_course_blocks($course) {
@@ -2711,11 +2734,17 @@ function blocks_add_default_course_blocks($course) {
     }
     $page = new moodle_page();
     $page->set_course($course);
-    $page->blocks->add_blocks($blocknames, $pagetypepattern);
+    $page->blocks->add_blocks(
+        $page->blocks->filter_nonexistent_blocks($blocknames),
+        $pagetypepattern,
+    );
 }
 
 /**
  * Add the default system-context blocks. E.g. the admin tree.
+ *
+ * Because this function is used on install, we skip over any default blocks that do not exist
+ * so that install can complete successfully even if blocks are removed.
  */
 function blocks_add_default_system_blocks() {
     global $DB;
@@ -2723,7 +2752,17 @@ function blocks_add_default_system_blocks() {
     $page = new moodle_page();
     $page->set_context(context_system::instance());
     // We don't add blocks required by the theme, they will be auto-created.
-    $page->blocks->add_blocks(array(BLOCK_POS_LEFT => array('admin_bookmarks')), 'admin-*', null, null, 2);
+    $page->blocks->add_blocks(
+        $page->blocks->filter_nonexistent_blocks([
+            BLOCK_POS_LEFT => [
+                'admin_bookmarks',
+            ],
+        ]),
+        'admin-*',
+        null,
+        false,
+        2,
+    );
 
     if ($defaultmypage = $DB->get_record('my_pages', array('userid' => null, 'name' => '__default', 'private' => 1))) {
         $subpagepattern = $defaultmypage->id;
@@ -2737,22 +2776,22 @@ function blocks_add_default_system_blocks() {
         $mycoursesubpagepattern = null;
     }
 
-    $page->blocks->add_blocks([
+    $page->blocks->add_blocks($page->blocks->filter_nonexistent_blocks([
         BLOCK_POS_RIGHT => [
             'recentlyaccesseditems',
         ],
         'content' => [
             'timeline',
             'calendar_month',
-        ]],
+        ]]),
         'my-index',
         $subpagepattern
     );
 
-    $page->blocks->add_blocks([
+    $page->blocks->add_blocks($page->blocks->filter_nonexistent_blocks([
         'content' => [
             'myoverview'
-        ]],
+        ]]),
         'my-index',
         $mycoursesubpagepattern
     );

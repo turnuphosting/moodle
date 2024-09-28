@@ -16,10 +16,16 @@
 
 namespace qbank_statistics;
 
+defined('MOODLE_INTERNAL') || die();
+
 use core_question\statistics\questions\all_calculated_for_qubaid_condition;
+use quiz_statistics\tests\statistics_helper;
 use mod_quiz\quiz_attempt;
 use mod_quiz\quiz_settings;
 use question_engine;
+
+global $CFG;
+require_once($CFG->dirroot . '/mod/quiz/tests/quiz_question_helper_test_trait.php');
 
 /**
  * Tests for question statistics.
@@ -30,6 +36,8 @@ use question_engine;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class helper_test extends \advanced_testcase {
+
+    use \quiz_question_helper_test_trait;
 
     /**
      * Test quizzes that contain a specified question.
@@ -43,7 +51,6 @@ class helper_test extends \advanced_testcase {
         $this->setAdminUser();
 
         $rcm = new \ReflectionMethod(helper::class, 'get_all_places_where_questions_were_attempted');
-        $rcm->setAccessible(true);
 
         // Create a course.
         $course = $this->getDataGenerator()->create_course();
@@ -100,7 +107,7 @@ class helper_test extends \advanced_testcase {
         $this->assertEquals((object) ['component' => 'mod_quiz', 'contextid' => $quiz2context->id], $q2places[0]);
 
         // Add a random question to quiz3.
-        quiz_add_random_questions($quiz3, 0, $cat->id, 1, false);
+        $this->add_random_questions($quiz3->id, 0, $cat->id, 1);
         $this->submit_quiz($quiz3, [1 => ['answer' => 'willbewrong']]);
 
         // Quiz 3 will now be in one of these arrays.
@@ -228,8 +235,7 @@ class helper_test extends \advanced_testcase {
 
         // Calculate the statistics.
         $this->expectOutputRegex('~.*Calculations completed.*~');
-        $statisticstask = new \quiz_statistics\task\recalculate();
-        $statisticstask->execute();
+        statistics_helper::run_pending_recalculation_tasks();
 
         return [$quiz1, $quiz2, $questions];
     }
@@ -245,7 +251,6 @@ class helper_test extends \advanced_testcase {
     private function extract_item_value(all_calculated_for_qubaid_condition $statistics,
                                         int $questionid, string $item): ?float {
         $rcm = new \ReflectionMethod(helper::class, 'extract_item_value');
-        $rcm->setAccessible(true);
         return $rcm->invoke(null, $statistics, $questionid, $item);
     }
 
@@ -257,7 +262,6 @@ class helper_test extends \advanced_testcase {
      */
     private function load_quiz_statistics_for_place(\context $context): ?all_calculated_for_qubaid_condition {
         $rcm = new \ReflectionMethod(helper::class, 'load_statistics_for_place');
-        $rcm->setAccessible(true);
         return $rcm->invoke(null, 'mod_quiz', $context);
     }
 
@@ -315,8 +319,8 @@ class helper_test extends \advanced_testcase {
         array $expectedquiz1facilities,
         array $quiz2attempts,
         array $expectedquiz2facilities,
-        array $expectedaveragefacilities)
-    : void {
+        array $expectedaveragefacilities
+    ): void {
         $this->resetAfterTest();
 
         list($quiz1, $quiz2, $questions) = $this->prepare_and_submit_quizzes($quiz1attempts, $quiz2attempts);

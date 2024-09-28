@@ -43,7 +43,7 @@ class moodlenet_send_activity_test extends externallib_advanced_testcase {
      *
      * @covers ::execute
      */
-    public function test_moodlenet_send_activity() {
+    public function test_moodlenet_send_activity(): void {
         global $CFG;
         $this->resetAfterTest();
         $this->setAdminUser();
@@ -110,5 +110,62 @@ class moodlenet_send_activity_test extends externallib_advanced_testcase {
         $this->assertEquals('erroroauthclient', $result['warnings'][0]['warningcode']);
         $this->assertEquals($issuer->get('id'), $result['warnings'][0]['item']);
         $this->assertEquals(get_string('moodlenet:issuerisnotauthorized', 'moodle'), $result['warnings'][0]['message']);
+    }
+
+    /**
+     * Test execute_returns() method.
+     *
+     * @dataProvider return_resource_url_provider
+     * @covers ::execute_returns
+     */
+    public function test_moodlenet_send_activity_return_resource_url(bool $state, string $resourceurl): void {
+        $this->resetAfterTest();
+        // Create dummy result with the resourceurl.
+        $result = [
+            'status' => true,
+            'resourceurl' => $resourceurl,
+            'warnings' => [],
+        ];
+        if (!$state) {
+            $this->expectException(\invalid_response_exception::class);
+        }
+        $result = external_api::clean_returnvalue(moodlenet_send_activity::execute_returns(), $result);
+        if ($state) {
+            $this->assertEquals($resourceurl, $result['resourceurl']);
+        }
+    }
+
+    /**
+     * Provider for test_moodlenet_send_activity_return_resource_url().
+     *
+     * @return array Test data.
+     */
+    public function return_resource_url_provider(): array {
+        return [
+            'Success 1' => [
+                true,
+                'https://moodlenet.example.com/drafts/view/testactivity_backup.mbz',
+            ],
+            'Success 2' => [
+                true,
+                'https://moodlenet.example.com/drafts/view/testactivity_backup with spaces.mbz',
+            ],
+            'Success 3' => [
+                true,
+                'https://moodlenet.example.com/drafts/view/testactivity_backup with " character.mbz',
+            ],
+            'Success 4' => [
+                true,
+                "https://moodlenet.example.com/drafts/view/testactivity_backup with ' character.mbz",
+            ],
+            'Success 5' => [
+                true,
+                'https://moodlenet.example.com/drafts/view/testactivity_backup with < and > characters.mbz',
+            ],
+            'Fail 1' => [
+                false,
+                'https://moodlenet.example.com/drafts/view/testactivity_backupwith<lang lang="en">a<a</lang>html.mbz',
+            ],
+        ];
     }
 }

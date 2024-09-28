@@ -18,6 +18,7 @@ namespace core_webservice;
 
 use core_external\external_api;
 use externallib_advanced_testcase;
+use core\tests\session\mock_handler;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -29,12 +30,13 @@ require_once($CFG->dirroot . '/webservice/tests/helpers.php');
  * External course functions unit tests
  *
  * @package    core_webservice
+ * @covers     \core_webservice_external::get_site_info
  * @category   external
  * @copyright  2012 Paul Charsley
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class externallib_test extends externallib_advanced_testcase {
-
+final class externallib_test extends externallib_advanced_testcase {
+    #[\Override]
     public function setUp(): void {
         // Calling parent is good, always
         parent::setUp();
@@ -43,7 +45,10 @@ class externallib_test extends externallib_advanced_testcase {
         set_config('enablewebservices', '1');
     }
 
-    public function test_get_site_info() {
+    /**
+     * Test get_site_info.
+     */
+    public function test_get_site_info(): void {
         global $DB, $USER, $CFG, $PAGE;
 
         $this->resetAfterTest(true);
@@ -111,6 +116,7 @@ class externallib_test extends externallib_advanced_testcase {
         $this->assertEquals(1, $siteinfo['downloadfiles']);
         $this->assertEquals(1, $siteinfo['uploadfiles']);
 
+        $this->assertCount(12, $siteinfo['advancedfeatures']);
         foreach ($siteinfo['advancedfeatures'] as $feature) {
             if ($feature['name'] == 'mnet_dispatcher_mode') {
                 if ($CFG->mnet_dispatcher_mode == 'off') {
@@ -118,6 +124,9 @@ class externallib_test extends externallib_advanced_testcase {
                 } else {
                     $this->assertEquals(1, $feature['value']);
                 }
+            } else if ($feature['name'] == 'enablecompetencies') {
+                $expected = (!empty(get_config('core_competency', 'enabled'))) ? 1 : 0;
+                $this->assertEquals($expected, $feature['value']);
             } else {
                 $this->assertEquals($CFG->{$feature['name']}, $feature['value']);
             }
@@ -141,6 +150,7 @@ class externallib_test extends externallib_advanced_testcase {
         $this->assertFalse($siteinfo['userissiteadmin']);
         $this->assertEquals($CFG->calendartype, $siteinfo['sitecalendartype']);
         $this->assertEquals($user['theme'], $siteinfo['theme']);
+        $this->assertEquals($USER->policyagreed, $siteinfo['policyagreed']);
 
         // Now as admin.
         $this->setAdminUser();
@@ -185,7 +195,9 @@ class externallib_test extends externallib_advanced_testcase {
         $record->firstip      = $record->lastip = '10.0.0.1';
         $record->sid = md5('hokus1');
         $record->timecreated = time();
-        $DB->insert_record('sessions', $record);
+
+        $mockhandler = new mock_handler();
+        $mockhandler->add_test_session($record);
 
         $siteinfo = \core_webservice_external::get_site_info();
         $siteinfo = external_api::clean_returnvalue(\core_webservice_external::get_site_info_returns(), $siteinfo);
@@ -196,7 +208,7 @@ class externallib_test extends externallib_advanced_testcase {
     /**
      * Test get_site_info with values > PHP_INT_MAX. We check only userquota since maxbytes require PHP ini changes.
      */
-    public function test_get_site_info_max_int() {
+    public function test_get_site_info_max_int(): void {
         $this->resetAfterTest(true);
 
         self::setUser(self::getDataGenerator()->create_user());
@@ -213,7 +225,7 @@ class externallib_test extends externallib_advanced_testcase {
     /**
      * Test get_site_info with missing components.
      */
-    public function test_get_site_missing_components() {
+    public function test_get_site_missing_components(): void {
         global $USER, $DB;
 
         $this->resetAfterTest(true);
@@ -271,6 +283,43 @@ class externallib_test extends externallib_advanced_testcase {
         // Check we ignore the missing component function.
         $this->assertCount(1, $result['functions']);
         $this->assertEquals('core_user_get_users', $result['functions'][0]['name']);
+    }
+
+
+    /**
+     * Test get_site_info returns the default home page URL when needed.
+     */
+    public function test_get_site_info_default_home_page(): void {
+        global $CFG;
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        // Site configuration.
+        $CFG->defaulthomepage = HOMEPAGE_MY;
+
+        $result = \core_webservice_external::get_site_info();
+        $result = external_api::clean_returnvalue(\core_webservice_external::get_site_info_returns(), $result);
+        $this->assertEquals(HOMEPAGE_MY, $result['userhomepage']);
+        $this->assertArrayNotHasKey('userhomepageurl', $result);
+
+        $CFG->defaulthomepage = "{$CFG->wwwroot}/home";
+
+        $result = \core_webservice_external::get_site_info();
+        $result = external_api::clean_returnvalue(\core_webservice_external::get_site_info_returns(), $result);
+        $this->assertEquals(HOMEPAGE_URL, $result['userhomepage']);
+        $this->assertEquals($CFG->defaulthomepage, $result['userhomepageurl']);
+
+        // User preference.
+        $CFG->defaulthomepage = HOMEPAGE_USER;
+
+        $userpreference = "{$CFG->wwwroot}/about";
+        set_user_preference('user_home_page_preference', $userpreference);
+
+        $result = \core_webservice_external::get_site_info();
+        $result = external_api::clean_returnvalue(\core_webservice_external::get_site_info_returns(), $result);
+        $this->assertEquals(HOMEPAGE_URL, $result['userhomepage']);
+        $this->assertEquals($userpreference, $result['userhomepageurl']);
     }
 
 }

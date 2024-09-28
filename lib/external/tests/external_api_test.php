@@ -332,7 +332,7 @@ class external_api_test extends \advanced_testcase {
     /**
      * Test \core_external\external_api::get_context()_from_params parameter validation.
      *
-     * @covers \core_external\external_api::get_context
+     * @covers \core_external\external_api::get_context_from_params
      */
     public function test_get_context_params(): void {
         global $USER;
@@ -345,7 +345,7 @@ class external_api_test extends \advanced_testcase {
     /**
      * Test \core_external\external_api::get_context()_from_params parameter validation.
      *
-     * @covers \core_external\external_api::get_context
+     * @covers \core_external\external_api::get_context_from_params
      */
     public function test_get_context_params2(): void {
         global $USER;
@@ -357,7 +357,7 @@ class external_api_test extends \advanced_testcase {
 
     /**
      * Test \core_external\external_api::get_context()_from_params parameter validation.
-     * @covers \core_external\external_api::get_context
+     * @covers \core_external\external_api::get_context_from_params
      */
     public function test_get_context_params3(): void {
         global $USER;
@@ -469,7 +469,6 @@ class external_api_test extends \advanced_testcase {
     protected function get_context_from_params() {
         $rc = new \ReflectionClass(external_api::class);
         $method = $rc->getMethod('get_context_from_params');
-        $method->setAccessible(true);
         return $method->invokeArgs(null, func_get_args());
     }
 }

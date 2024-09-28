@@ -168,7 +168,7 @@ class api {
      *
      * @return array An array of the DPO role shortnames
      */
-    public static function get_dpo_role_names() : array {
+    public static function get_dpo_role_names(): array {
         global $DB;
 
         $dporoleids = self::get_assigned_privacy_officer_roles();
@@ -524,7 +524,7 @@ class api {
      * @param   array   $userids
      * @return  array
      */
-    public static function find_ongoing_request_types_for_users(array $userids) : array {
+    public static function find_ongoing_request_types_for_users(array $userids): array {
         global $DB;
 
         if (empty($userids)) {
@@ -821,7 +821,7 @@ class api {
      * @param int|null $userid
      * @return bool
      */
-    public static function can_create_data_download_request_for_self(int $userid = null): bool {
+    public static function can_create_data_download_request_for_self(?int $userid = null): bool {
         global $USER;
         $userid = $userid ?: $USER->id;
         return has_capability('tool/dataprivacy:downloadownrequest', \context_user::instance($userid), $userid);
@@ -834,7 +834,7 @@ class api {
      * @return bool
      * @throws coding_exception
      */
-    public static function can_create_data_deletion_request_for_self(int $userid = null): bool {
+    public static function can_create_data_deletion_request_for_self(?int $userid = null): bool {
         global $USER;
         $userid = $userid ?: $USER->id;
         return has_capability('tool/dataprivacy:requestdelete', \context_user::instance($userid), $userid)
@@ -849,7 +849,7 @@ class api {
      * @throws coding_exception
      * @throws dml_exception
      */
-    public static function can_create_data_deletion_request_for_other(int $userid = null): bool {
+    public static function can_create_data_deletion_request_for_other(?int $userid = null): bool {
         global $USER;
         $userid = $userid ?: $USER->id;
         return has_capability('tool/dataprivacy:requestdeleteforotheruser', context_system::instance(), $userid);
@@ -863,7 +863,7 @@ class api {
      * @return bool
      * @throws coding_exception
      */
-    public static function can_create_data_deletion_request_for_children(int $userid, int $requesterid = null): bool {
+    public static function can_create_data_deletion_request_for_children(int $userid, ?int $requesterid = null): bool {
         global $USER;
         $requesterid = $requesterid ?: $USER->id;
         return has_capability('tool/dataprivacy:makedatadeletionrequestsforchildren', \context_user::instance($userid),
@@ -1201,7 +1201,7 @@ class api {
      * @return  contextlist_collection  The collection of approved_contextlist objects.
      */
     public static function get_approved_contextlist_collection_for_collection(contextlist_collection $collection,
-            \stdClass $foruser, int $type) : contextlist_collection {
+            \stdClass $foruser, int $type): contextlist_collection {
 
         // Create the approved contextlist collection object.
         $approvedcollection = new contextlist_collection($collection->get_userid());
@@ -1326,7 +1326,7 @@ class api {
      * @param   \DateInterval   $interval
      * @return  string
      */
-    public static function format_retention_period(\DateInterval $interval) : string {
+    public static function format_retention_period(\DateInterval $interval): string {
         // It is one or another.
         if ($interval->y) {
             $formattedtime = get_string('numyears', 'moodle', $interval->format('%y'));
@@ -1363,7 +1363,7 @@ class api {
      * @param int $requestid The data request ID.
      * @param int $userid Optional. The user ID to run the task as, if necessary.
      */
-    public static function queue_data_request_task(int $requestid, int $userid = null): void {
+    public static function queue_data_request_task(int $requestid, ?int $userid = null): void {
         $task = new process_data_request_task();
         $task->set_custom_data(['requestid' => $requestid]);
         if ($userid) {
@@ -1629,5 +1629,48 @@ class api {
         }
 
         return $contexts;
+    }
+
+    /**
+     * Validates a data request creation.
+     *
+     * @param stdClass $data the data request information, including userid and type
+     * @return array array of errors, empty if everything went ok
+     */
+    public static function validate_create_data_request(stdClass $data): array {
+        global $USER;
+
+        $errors = [];
+        $validrequesttypes = [
+            self::DATAREQUEST_TYPE_EXPORT,
+            self::DATAREQUEST_TYPE_DELETE,
+        ];
+        if (!in_array($data->type, $validrequesttypes)) {
+            $errors['errorinvalidrequesttype'] = get_string('errorinvalidrequesttype', 'tool_dataprivacy');
+        }
+
+        $userid = $data->userid;
+
+        if (self::has_ongoing_request($userid, $data->type)) {
+            $errors['errorrequestalreadyexists'] = get_string('errorrequestalreadyexists', 'tool_dataprivacy');
+        }
+
+        // Check if current user can create data requests.
+        if ($data->type == self::DATAREQUEST_TYPE_DELETE) {
+            if ($userid == $USER->id) {
+                if (!self::can_create_data_deletion_request_for_self()) {
+                    $errors['errorcannotrequestdeleteforself'] = get_string('errorcannotrequestdeleteforself', 'tool_dataprivacy');
+                }
+            } else if (!self::can_create_data_deletion_request_for_other()
+                && !self::can_create_data_deletion_request_for_children($userid)) {
+                $errors['errorcannotrequestdeleteforother'] = get_string('errorcannotrequestdeleteforother', 'tool_dataprivacy');
+            }
+        } else if ($data->type == self::DATAREQUEST_TYPE_EXPORT) {
+            if ($userid == $USER->id && !self::can_create_data_download_request_for_self()) {
+                $errors['errorcannotrequestexportforself'] = get_string('errorcannotrequestexportforself', 'tool_dataprivacy');
+            }
+        }
+
+        return $errors;
     }
 }

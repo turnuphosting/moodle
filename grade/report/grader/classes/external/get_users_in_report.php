@@ -16,7 +16,6 @@
 
 namespace gradereport_grader\external;
 
-use coding_exception;
 use context_course;
 use core_user_external;
 use core_external\external_api;
@@ -26,9 +25,6 @@ use core_external\external_single_structure;
 use core_external\external_value;
 use core_external\external_warnings;
 use grade_report_grader;
-use invalid_parameter_exception;
-use moodle_exception;
-use restricted_context_exception;
 use user_picture;
 
 defined('MOODLE_INTERNAL') || die;
@@ -64,13 +60,10 @@ class get_users_in_report extends external_api {
      *
      * @param int $courseid Course ID to fetch the grader report for.
      * @return array Users and warnings to pass back to the calling widget.
-     * @throws coding_exception
-     * @throws invalid_parameter_exception
-     * @throws moodle_exception
-     * @throws restricted_context_exception
      */
-    protected static function execute(int $courseid): array {
+    public static function execute(int $courseid): array {
         global $PAGE;
+
         self::validate_parameters(
             self::execute_parameters(),
             [
@@ -82,6 +75,8 @@ class get_users_in_report extends external_api {
         $context = context_course::instance($courseid);
         self::validate_context($context);
 
+        require_capability('gradereport/grader:view', $context);
+
         // Return tracking object.
         $gpr = new \grade_plugin_return(
             [
@@ -92,15 +87,26 @@ class get_users_in_report extends external_api {
         );
         $report = new grade_report_grader($courseid, $gpr, $context);
 
+        $userfieldsapi = \core_user\fields::for_identity($context, false)->with_userpic();
+        $extrauserfields = $userfieldsapi->get_required_fields([\core_user\fields::PURPOSE_IDENTITY]);
+
         // For the returned users, Add a couple of extra fields that we need for the search module.
-        $users = array_map(function ($user) use ($PAGE) {
-            $user->fullname = fullname($user);
+        $users = array_map(function ($user) use ($PAGE, $extrauserfields) {
+            $userforselector = new \stdClass();
+            $userforselector->id = $user->id;
+            $userforselector->fullname = fullname($user);
+            foreach (\core_user\fields::get_name_fields() as $field) {
+                $userforselector->$field = $user->$field ?? null;
+            }
             $userpicture = new user_picture($user);
             $userpicture->size = 1;
-            $user->profileimageurl = $userpicture->get_url($PAGE)->out(false);
+            $userforselector->profileimageurl = $userpicture->get_url($PAGE)->out(false);
             $userpicture->size = 0; // Size f2.
-            $user->profileimageurlsmall = $userpicture->get_url($PAGE)->out(false);
-            return $user;
+            $userforselector->profileimageurlsmall = $userpicture->get_url($PAGE)->out(false);
+            foreach ($extrauserfields as $field) {
+                $userforselector->$field = $user->$field ?? null;
+            }
+            return $userforselector;
         }, $report->load_users(true));
         sort($users);
 

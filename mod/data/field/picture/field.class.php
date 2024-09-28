@@ -87,7 +87,7 @@ class data_field_picture extends data_field_base {
             $itemid = file_get_unused_draft_itemid();
         }
         $str = '<div title="' . s($this->field->description) . '">';
-        $str .= '<fieldset><legend><span class="accesshide">'.$this->field->name;
+        $str .= '<fieldset><legend><span class="accesshide">'.s($this->field->name);
 
         if ($this->field->required) {
             $str .= '&nbsp;' . get_string('requiredelement', 'form') . '</span></legend>';
@@ -450,5 +450,24 @@ class data_field_picture extends data_field_base {
             $configs["param$i"] = $this->field->{"param$i"};
         }
         return $configs;
+    }
+
+    public function get_field_params(): array {
+        global $DB, $CFG;
+
+        $data = parent::get_field_params();
+
+        $course = $DB->get_record('course', ['id' => $this->data->course]);
+        $filesizes = get_max_upload_sizes($CFG->maxbytes, $course->maxbytes, 0, $this->field->param3);
+
+        foreach ($filesizes as $value => $name) {
+            if (!((isset($this->field->param3) && $value == $this->field->param3))) {
+                $data['options'][] = ['name' => $name, 'value' => $value, 'selected' => 0];
+            } else {
+                $data['options'][] = ['name' => $name, 'value' => $value, 'selected' => 1];
+            }
+        }
+
+        return $data;
     }
 }

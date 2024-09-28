@@ -205,7 +205,7 @@ $bulkoptions = (object) [
     'uniqueid' => $participanttable->uniqueid,
 ];
 
-echo '<br /><div class="buttons"><div class="form-inline">';
+echo '<br /><div class="buttons"><div class="d-flex flex-wrap align-items-center">';
 
 echo html_writer::start_tag('div', array('class' => 'btn-group'));
 
@@ -271,7 +271,7 @@ if ($context->id != $frontpagectx->id) {
 
 $selectactionparams = array(
     'id' => 'formactionid',
-    'class' => 'ml-2',
+    'class' => 'ms-2',
     'data-action' => 'toggle',
     'data-togglegroup' => 'participants-table',
     'data-toggle' => 'action',

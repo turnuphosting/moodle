@@ -68,19 +68,15 @@ function tool_usertours_extend_navigation_user() {
 }
 
 /**
- * Add JS to bootstrap tours. Only in Moodle 3.3+
- */
-function tool_usertours_before_footer() {
-    \tool_usertours\helper::bootstrap();
-}
-
-/**
  * Map icons for font-awesome themes.
  */
 function tool_usertours_get_fontawesome_icon_map() {
     return [
+        'tool_usertours:i/tour-import' => 'fa-upload',
+        'tool_usertours:i/tour-new' => 'fa-file-circle-plus',
+        'tool_usertours:i/tour-shared' => 'fa-share-from-square',
+        'tool_usertours:i/reload' => 'fa-arrow-rotate-right',
         'tool_usertours:t/export' => 'fa-download',
-        'tool_usertours:i/reload' => 'fa-refresh',
         'tool_usertours:t/filler' => 'fa-spacer',
     ];
 }

@@ -70,7 +70,7 @@ class data_field_file extends data_field_base {
 
         // database entry label
         $html = '<div title="' . s($this->field->description) . '">';
-        $html .= '<fieldset><legend><span class="accesshide">'.$this->field->name;
+        $html .= '<fieldset><legend><span class="accesshide">'.s($this->field->name);
 
         if ($this->field->required) {
             $html .= '&nbsp;' . get_string('requiredelement', 'form') . '</span></legend>';
@@ -105,7 +105,7 @@ class data_field_file extends data_field_base {
     }
 
     function display_search_field($value = '') {
-        return '<label class="accesshide" for="f_' . $this->field->id . '">' . $this->field->name . '</label>' .
+        return '<label class="accesshide" for="f_' . $this->field->id . '">' . s($this->field->name) . '</label>' .
                '<input type="text" size="16" id="f_'.$this->field->id.'" name="f_'.$this->field->id.'" ' .
                     'value="'.s($value).'" class="form-control"/>';
     }
@@ -315,5 +315,24 @@ class data_field_file extends data_field_base {
             $configs["param$i"] = $this->field->{"param$i"};
         }
         return $configs;
+    }
+
+    public function get_field_params(): array {
+        global $DB, $CFG;
+
+        $data = parent::get_field_params();
+
+        $course = $DB->get_record('course', ['id' => $this->data->course]);
+        $filesizes = get_max_upload_sizes($CFG->maxbytes, $course->maxbytes, 0, $this->field->param3);
+
+        foreach ($filesizes as $value => $name) {
+            if (!((isset($this->field->param3) && $value == $this->field->param3))) {
+                $data['filesizes'][] = ['name' => $name, 'value' => $value, 'selected' => 0];
+            } else {
+                $data['filesizes'][] = ['name' => $name, 'value' => $value, 'selected' => 1];
+            }
+        }
+
+        return $data;
     }
 }

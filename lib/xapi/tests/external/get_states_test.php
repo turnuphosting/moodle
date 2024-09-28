@@ -47,6 +47,7 @@ class get_states_test extends externallib_advanced_testcase {
     public static function setUpBeforeClass(): void {
         global $CFG;
         require_once($CFG->dirroot . '/lib/xapi/tests/helper.php');
+        parent::setUpBeforeClass();
     }
 
     /**
@@ -145,7 +146,7 @@ class get_states_test extends externallib_advanced_testcase {
      *
      * @return  array
      */
-    public function components_provider() : array {
+    public function components_provider(): array {
         return [
             'Inexistent component' => [
                 'component' => 'inexistent_component',

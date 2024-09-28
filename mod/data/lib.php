@@ -380,7 +380,7 @@ class data_field_base {     // Base class for Database Field Types (see field/*/
         }
 
         $str = '<div title="' . s($this->field->description) . '">';
-        $str .= '<label for="field_'.$this->field->id.'"><span class="accesshide">'.$this->field->name.'</span>';
+        $str .= '<label for="field_'.$this->field->id.'"><span class="accesshide">'.s($this->field->name).'</span>';
         if ($this->field->required) {
             $image = $OUTPUT->pix_icon('req', get_string('requiredelement', 'form'));
             $str .= html_writer::div($image, 'inline-req');
@@ -428,11 +428,26 @@ class data_field_base {     // Base class for Database Field Types (see field/*/
 
         echo $OUTPUT->heading($this->name(), 3);
 
-        $filepath = $CFG->dirroot.'/mod/data/field/'.$this->type.'/mod.html';
+        $filepath = $CFG->dirroot . '/mod/data/field/' . $this->type . '/mod.html';
+        $templatename = 'datafield_' . $this->type . '/' . $this->type;
 
-        if (!file_exists($filepath)) {
-            throw new \moodle_exception(get_string('missingfieldtype', 'data', (object)['name' => $this->field->name]));
+        try {
+            $templatefilepath = \core\output\mustache_template_finder::get_template_filepath($templatename);
+            $templatefileexists = true;
+        } catch (moodle_exception $e) {
+            if (!file_exists($filepath)) {
+                // Neither file exists.
+                throw new \moodle_exception(get_string('missingfieldtype', 'data', (object)['name' => $this->field->name]));
+            }
+            $templatefileexists = false;
+        }
+
+        if ($templatefileexists) {
+            // Give out templated Bootstrap formatted form fields.
+            $data = $this->get_field_params();
+            echo $OUTPUT->render_from_template($templatename, $data);
         } else {
+            // Fall back to display mod.html for backward compatibility.
             require_once($filepath);
         }
 
@@ -742,6 +757,37 @@ class data_field_base {     // Base class for Database Field Types (see field/*/
         }
         return $configs;
     }
+
+    /**
+     * Function to let field define their parameters.
+     *
+     * This method that should be overridden by the datafield plugins
+     * when they need to define their data.
+     *
+     * @return array
+     */
+    protected function get_field_params(): array {
+        // Name and description of the field.
+        $data = [
+            'name' => $this->field->name,
+            'description' => $this->field->description,
+        ];
+
+        // Whether the field is required.
+        if (isset($this->field->required)) {
+            $data['required'] = $this->field->required;
+        }
+
+        // Add all the field parameters.
+        for ($i = 1; $i <= 10; $i++) {
+            if (isset($this->field->{"param$i"})) {
+                $data["param$i"] = $this->field->{"param$i"};
+            }
+        }
+
+        return $data;
+    }
+
 }
 
 
@@ -1005,6 +1051,7 @@ function data_get_field_from_id($fieldid, $data){
 function data_get_field_new($type, $data) {
     global $CFG;
 
+    $type = clean_param($type, PARAM_ALPHA);
     $filepath = $CFG->dirroot.'/mod/data/field/'.$type.'/field.class.php';
     // It should never access this method if the subfield class doesn't exist.
     if (!file_exists($filepath)) {
@@ -1027,11 +1074,12 @@ function data_get_field_new($type, $data) {
  * @param stdClass|null $cm optional course module data
  * @return data_field_base the field object instance or data_field_base if unkown type
  */
-function data_get_field($field, $data, $cm=null) {
+function data_get_field(stdClass $field, stdClass $data, ?stdClass $cm=null): data_field_base {
     global $CFG;
     if (!isset($field->type)) {
         return new data_field_base($field);
     }
+    $field->type = clean_param($field->type, PARAM_ALPHA);
     $filepath = $CFG->dirroot.'/mod/data/field/'.$field->type.'/field.class.php';
     if (!file_exists($filepath)) {
         return new data_field_base($field);
@@ -1108,9 +1156,11 @@ function data_numentries($data, $userid=null) {
  * @param object $data
  * @param int $groupid
  * @param int $userid
+ * @param bool $approved If specified, and the user has the capability to approve entries, then this value
+ *      will be used as the approved status of the new record
  * @return bool
  */
-function data_add_record($data, $groupid = 0, $userid = null) {
+function data_add_record($data, $groupid = 0, $userid = null, bool $approved = true) {
     global $USER, $DB;
 
     $cm = get_coursemodule_from_instance('data', $data->id);
@@ -1122,7 +1172,7 @@ function data_add_record($data, $groupid = 0, $userid = null) {
     $record->groupid = $groupid;
     $record->timecreated = $record->timemodified = time();
     if (has_capability('mod/data:approve', $context)) {
-        $record->approved = 1;
+        $record->approved = $approved;
     } else {
         $record->approved = 0;
     }
@@ -1502,7 +1552,7 @@ function data_grade_item_delete($data) {
  * @param moodle_url|null $jumpurl a moodle_url by which to jump back to the record list (can be null)
  * @return mixed string with all parsed entries or nothing if $return is false
  */
-function data_print_template($templatename, $records, $data, $search='', $page=0, $return=false, moodle_url $jumpurl=null) {
+function data_print_template($templatename, $records, $data, $search='', $page=0, $return=false, ?moodle_url $jumpurl=null) {
     debugging(
         'data_print_template is deprecated. Use mod_data\\manager::get_template and mod_data\\template::parse_entries instead',
         DEBUG_DEVELOPER
@@ -1740,7 +1790,8 @@ function data_print_preference_form($data, $perpage, $search, $sort='', $order='
     echo '<label for="pref_perpage">'.get_string('pagesize','data').'</label> ';
     $pagesizes = array(2=>2,3=>3,4=>4,5=>5,6=>6,7=>7,8=>8,9=>9,10=>10,15=>15,
                        20=>20,30=>30,40=>40,50=>50,100=>100,200=>200,300=>300,400=>400,500=>500,1000=>1000);
-    echo html_writer::select($pagesizes, 'perpage', $perpage, false, array('id' => 'pref_perpage', 'class' => 'custom-select'));
+    echo html_writer::select($pagesizes, 'perpage', $perpage, false, array('id' => 'pref_perpage',
+        'class' => 'custom-select me-1'));
 
     if ($advanced) {
         $regsearchclass = 'search_none';
@@ -1749,19 +1800,19 @@ function data_print_preference_form($data, $perpage, $search, $sort='', $order='
         $regsearchclass = 'search_inline';
         $advancedsearchclass = 'search_none';
     }
-    echo '<div id="reg_search" class="' . $regsearchclass . ' form-inline" >&nbsp;&nbsp;&nbsp;';
-    echo '<label for="pref_search">' . get_string('search') . '</label> <input type="text" ' .
-         'class="form-control" size="16" name="search" id= "pref_search" value="' . s($search) . '" /></div>';
-    echo '&nbsp;&nbsp;&nbsp;<label for="pref_sortby">'.get_string('sortby').'</label> ';
+    echo '<div id="reg_search" class="' . $regsearchclass . ' me-1" >';
+    echo '<label for="pref_search" class="me-1">' . get_string('search') . '</label><input type="text" ' .
+         'class="form-control d-inline-block align-middle w-auto me-1" size="16" name="search" id= "pref_search" value="' . s($search) . '" /></div>';
+    echo '<label for="pref_sortby">'.get_string('sortby').'</label> ';
     // foreach field, print the option
-    echo '<select name="sort" id="pref_sortby" class="custom-select mr-1">';
+    echo '<select name="sort" id="pref_sortby" class="custom-select me-1">';
     if ($fields = $DB->get_records('data_fields', array('dataid'=>$data->id), 'name')) {
         echo '<optgroup label="'.get_string('fields', 'data').'">';
         foreach ($fields as $field) {
             if ($field->id == $sort) {
-                echo '<option value="'.$field->id.'" selected="selected">'.$field->name.'</option>';
+                echo '<option value="'.$field->id.'" selected="selected">'.s($field->name).'</option>';
             } else {
-                echo '<option value="'.$field->id.'">'.$field->name.'</option>';
+                echo '<option value="'.$field->id.'">'.s($field->name).'</option>';
             }
         }
         echo '</optgroup>';
@@ -1785,7 +1836,7 @@ function data_print_preference_form($data, $perpage, $search, $sort='', $order='
     echo '</optgroup>';
     echo '</select>';
     echo '<label for="pref_order" class="accesshide">'.get_string('order').'</label>';
-    echo '<select id="pref_order" name="order" class="custom-select mr-1">';
+    echo '<select id="pref_order" name="order" class="custom-select me-1">';
     if ($order == 'ASC') {
         echo '<option value="ASC" selected="selected">'.get_string('ascending','data').'</option>';
     } else {
@@ -1805,14 +1856,14 @@ function data_print_preference_form($data, $perpage, $search, $sort='', $order='
         $checked = '';
     }
     $PAGE->requires->js('/mod/data/data.js');
-    echo '&nbsp;<input type="hidden" name="advanced" value="0" />';
-    echo '&nbsp;<input type="hidden" name="filter" value="1" />';
-    echo '&nbsp;<input type="checkbox" id="advancedcheckbox" name="advanced" value="1" ' . $checked . ' ' .
+    echo '<input type="hidden" name="advanced" value="0" />';
+    echo '<input type="hidden" name="filter" value="1" />';
+    echo '<input type="checkbox" id="advancedcheckbox" name="advanced" value="1" ' . $checked . ' ' .
          'onchange="showHideAdvSearch(this.checked);" class="mx-1" />' .
          '<label for="advancedcheckbox">' . get_string('advancedsearch', 'data') . '</label>';
     echo '</div>';
-    echo '<div id="advsearch-save-sec" class="ml-auto '. $regsearchclass . '">';
-    echo '&nbsp;<input type="submit" class="btn btn-secondary" value="' . get_string('savesettings', 'data') . '" />';
+    echo '<div id="advsearch-save-sec" class="ms-auto '. $regsearchclass . '">';
+    echo '<input type="submit" class="btn btn-secondary" value="' . get_string('savesettings', 'data') . '" />';
     echo '</div>';
     echo '</div>';
     echo '<div>';
@@ -1917,7 +1968,7 @@ function data_print_preference_form($data, $perpage, $search, $sort='', $order='
     echo '</td></tr>';
 
     echo '<tr><td colspan="4"><br/>' .
-         '<input type="submit" class="btn btn-primary mr-1" value="' . get_string('savesettings', 'data') . '" />' .
+         '<input type="submit" class="btn btn-primary me-1" value="' . get_string('savesettings', 'data') . '" />' .
          '<input type="submit" class="btn btn-secondary" name="resetadv" value="' . get_string('resetsettings', 'data') . '" />' .
          '</td></tr>';
     echo '</table>';
@@ -2259,7 +2310,6 @@ function data_print_header($course, $cm, $data, $currenttab='', string $actionba
 
     global $CFG, $displaynoticegood, $displaynoticebad, $OUTPUT, $PAGE, $USER;
 
-    $PAGE->set_title($data->name);
     echo $OUTPUT->header();
 
     echo $actionbar;
@@ -2783,6 +2833,7 @@ function data_preset_path($course, $userid, $shortname) {
  */
 function data_reset_course_form_definition(&$mform) {
     $mform->addElement('header', 'dataheader', get_string('modulenameplural', 'data'));
+    $mform->addElement('static', 'datadelete', get_string('delete'));
     $mform->addElement('checkbox', 'reset_data', get_string('deleteallentries','data'));
 
     $mform->addElement('checkbox', 'reset_data_notenrolled', get_string('deletenotenrolled', 'data'));
@@ -2843,7 +2894,7 @@ function data_reset_userdata($data) {
     require_once($CFG->dirroot.'/rating/lib.php');
 
     $componentstr = get_string('modulenameplural', 'data');
-    $status = array();
+    $status = [];
 
     $allrecordssql = "SELECT r.id
                         FROM {data_records} r
@@ -2862,13 +2913,13 @@ function data_reset_userdata($data) {
     // Set the file storage - may need it to remove files later.
     $fs = get_file_storage();
 
-    // delete entries if requested
+    // Delete entries if requested.
     if (!empty($data->reset_data)) {
-        $DB->delete_records_select('comments', "itemid IN ($allrecordssql) AND commentarea='database_entry'", array($data->courseid));
-        $DB->delete_records_select('data_content', "recordid IN ($allrecordssql)", array($data->courseid));
-        $DB->delete_records_select('data_records', "dataid IN ($alldatassql)", array($data->courseid));
+        $DB->delete_records_select('comments', "itemid IN ($allrecordssql) AND commentarea='database_entry'", [$data->courseid]);
+        $DB->delete_records_select('data_content', "recordid IN ($allrecordssql)", [$data->courseid]);
+        $DB->delete_records_select('data_records', "dataid IN ($alldatassql)", [$data->courseid]);
 
-        if ($datas = $DB->get_records_sql($alldatassql, array($data->courseid))) {
+        if ($datas = $DB->get_records_sql($alldatassql, [$data->courseid])) {
             foreach ($datas as $dataid=>$unused) {
                 if (!$cm = get_coursemodule_from_instance('data', $dataid)) {
                     continue;
@@ -2886,13 +2937,17 @@ function data_reset_userdata($data) {
         }
 
         if (empty($data->reset_gradebook_grades)) {
-            // remove all grades from gradebook
+            // Remove all grades from gradebook.
             data_reset_gradebook($data->courseid);
         }
-        $status[] = array('component'=>$componentstr, 'item'=>get_string('deleteallentries', 'data'), 'error'=>false);
+        $status[] = [
+            'component' => $componentstr,
+            'item' => get_string('deleteallentries', 'data'),
+            'error' => false,
+        ];
     }
 
-    // remove entries by users not enrolled into course
+    // Remove entries by users not enrolled into course.
     if (!empty($data->reset_data_notenrolled)) {
         $recordssql = "SELECT r.id, r.userid, r.dataid, u.id AS userexists, u.deleted AS userdeleted
                          FROM {data_records} r
@@ -2901,13 +2956,13 @@ function data_reset_userdata($data) {
                         WHERE d.course = ? AND r.userid > 0";
 
         $course_context = context_course::instance($data->courseid);
-        $notenrolled = array();
-        $fields = array();
-        $rs = $DB->get_recordset_sql($recordssql, array($data->courseid));
+        $notenrolled = [];
+        $fields = [];
+        $rs = $DB->get_recordset_sql($recordssql, [$data->courseid]);
         foreach ($rs as $record) {
             if (array_key_exists($record->userid, $notenrolled) or !$record->userexists or $record->userdeleted
               or !is_enrolled($course_context, $record->userid)) {
-                //delete ratings
+                // Delete ratings.
                 if (!$cm = get_coursemodule_from_instance('data', $record->dataid)) {
                     continue;
                 }
@@ -2917,7 +2972,7 @@ function data_reset_userdata($data) {
                 $rm->delete_ratings($ratingdeloptions);
 
                 // Delete any files that may exist.
-                if ($contents = $DB->get_records('data_content', array('recordid' => $record->id), '', 'id')) {
+                if ($contents = $DB->get_records('data_content', ['recordid' => $record->id], '', 'id')) {
                     foreach ($contents as $content) {
                         $fs->delete_area_files($datacontext->id, 'mod_data', 'content', $content->id);
                     }
@@ -2926,18 +2981,22 @@ function data_reset_userdata($data) {
 
                 core_tag_tag::remove_all_item_tags('mod_data', 'data_records', $record->id);
 
-                $DB->delete_records('comments', array('itemid' => $record->id, 'commentarea' => 'database_entry'));
-                $DB->delete_records('data_content', array('recordid' => $record->id));
-                $DB->delete_records('data_records', array('id' => $record->id));
+                $DB->delete_records('comments', ['itemid' => $record->id, 'commentarea' => 'database_entry']);
+                $DB->delete_records('data_content', ['recordid' => $record->id]);
+                $DB->delete_records('data_records', ['id' => $record->id]);
             }
         }
         $rs->close();
-        $status[] = array('component'=>$componentstr, 'item'=>get_string('deletenotenrolled', 'data'), 'error'=>false);
+        $status[] = [
+            'component' => $componentstr,
+            'item' => get_string('deletenotenrolled', 'data'),
+            'error' => false,
+        ];
     }
 
-    // remove all ratings
+    // Remove all ratings.
     if (!empty($data->reset_data_ratings)) {
-        if ($datas = $DB->get_records_sql($alldatassql, array($data->courseid))) {
+        if ($datas = $DB->get_records_sql($alldatassql, [$data->courseid])) {
             foreach ($datas as $dataid=>$unused) {
                 if (!$cm = get_coursemodule_from_instance('data', $dataid)) {
                     continue;
@@ -2950,22 +3009,30 @@ function data_reset_userdata($data) {
         }
 
         if (empty($data->reset_gradebook_grades)) {
-            // remove all grades from gradebook
+            // Remove all grades from gradebook.
             data_reset_gradebook($data->courseid);
         }
 
-        $status[] = array('component'=>$componentstr, 'item'=>get_string('deleteallratings'), 'error'=>false);
+        $status[] = [
+            'component' => $componentstr,
+            'item' => get_string('deleteallratings'),
+            'error' => false,
+        ];
     }
 
-    // remove all comments
+    // Remove all comments.
     if (!empty($data->reset_data_comments)) {
-        $DB->delete_records_select('comments', "itemid IN ($allrecordssql) AND commentarea='database_entry'", array($data->courseid));
-        $status[] = array('component'=>$componentstr, 'item'=>get_string('deleteallcomments'), 'error'=>false);
+        $DB->delete_records_select('comments', "itemid IN ($allrecordssql) AND commentarea='database_entry'", [$data->courseid]);
+        $status[] = [
+            'component' => $componentstr,
+            'item' => get_string('deleteallcomments'),
+            'error' => false,
+        ];
     }
 
     // Remove all the tags.
     if (!empty($data->reset_data_tags)) {
-        if ($datas = $DB->get_records_sql($alldatassql, array($data->courseid))) {
+        if ($datas = $DB->get_records_sql($alldatassql, [$data->courseid])) {
             foreach ($datas as $dataid => $unused) {
                 if (!$cm = get_coursemodule_from_instance('data', $dataid)) {
                     continue;
@@ -2976,16 +3043,35 @@ function data_reset_userdata($data) {
 
             }
         }
-        $status[] = array('component' => $componentstr, 'item' => get_string('tagsdeleted', 'data'), 'error' => false);
+        $status[] = [
+            'component' => $componentstr,
+            'item' => get_string('removealldatatags', 'data'),
+            'error' => false,
+        ];
     }
 
-    // updating dates - shift may be negative too
+    // Updating dates - shift may be negative too.
     if ($data->timeshift) {
         // Any changes to the list of dates that needs to be rolled should be same during course restore and course reset.
         // See MDL-9367.
-        shift_course_mod_dates('data', array('timeavailablefrom', 'timeavailableto',
-            'timeviewfrom', 'timeviewto', 'assesstimestart', 'assesstimefinish'), $data->timeshift, $data->courseid);
-        $status[] = array('component'=>$componentstr, 'item'=>get_string('datechanged'), 'error'=>false);
+        shift_course_mod_dates(
+            'data',
+            [
+                'timeavailablefrom',
+                'timeavailableto',
+                'timeviewfrom',
+                'timeviewto',
+                'assesstimestart',
+                'assesstimefinish',
+            ],
+            $data->timeshift,
+            $data->courseid,
+        );
+        $status[] = [
+            'component' => $componentstr,
+            'item' => get_string('date'),
+            'error' => false,
+        ];
     }
 
     return $status;
@@ -3348,7 +3434,6 @@ function data_presets_generate_xml($course, $cm, $data) {
     $preset = preset::create_from_instance($manager, $data->name);
     $reflection = new \ReflectionClass(preset::class);
     $method = $reflection->getMethod('generate_preset_xml');
-    $method->setAccessible(true);
     return $method->invokeArgs($preset, []);
 }
 
@@ -4040,17 +4125,17 @@ function data_view($data, $course, $cm, $context) {
  */
 function mod_data_get_fontawesome_icon_map() {
     return [
-        'mod_data:field/checkbox' => 'fa-check-square-o',
-        'mod_data:field/date' => 'fa-calendar-o',
-        'mod_data:field/file' => 'fa-file',
-        'mod_data:field/latlong' => 'fa-globe',
+        'mod_data:field/checkbox' => 'fa-regular fa-square-check',
+        'mod_data:field/date' => 'fa-regular fa-calendar',
+        'mod_data:field/file' => 'fa-regular fa-file',
+        'mod_data:field/latlong' => 'fa-earth-americas',
         'mod_data:field/menu' => 'fa-bars',
         'mod_data:field/multimenu' => 'fa-bars',
         'mod_data:field/number' => 'fa-hashtag',
-        'mod_data:field/picture' => 'fa-picture-o',
-        'mod_data:field/radiobutton' => 'fa-circle-o',
-        'mod_data:field/textarea' => 'fa-font',
+        'mod_data:field/picture' => 'fa-regular fa-image',
+        'mod_data:field/radiobutton' => 'fa-regular fa-circle-dot',
         'mod_data:field/text' => 'fa-i-cursor',
+        'mod_data:field/textarea' => 'fa-font',
         'mod_data:field/url' => 'fa-link',
     ];
 }

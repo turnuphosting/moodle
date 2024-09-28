@@ -24,10 +24,11 @@ use TCPDF_STATIC;
  * @package    core
  * @copyright  2021 Brendan Heywood (brendan@catalyst-au.net)
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers \pdf
  */
 class pdflib_test extends \advanced_testcase {
 
-    public function test_gettcpdf_producer() {
+    public function test_gettcpdf_producer(): void {
         global $CFG;
         require_once($CFG->libdir.'/pdflib.php');
 
@@ -37,7 +38,7 @@ class pdflib_test extends \advanced_testcase {
         $this->assertEquals('TCPDF (http://www.tcpdf.org)', $producer);
     }
 
-    public function test_qrcode() {
+    public function test_qrcode(): void {
         global $CFG;
         require_once($CFG->libdir.'/pdflib.php');
 
@@ -70,7 +71,7 @@ class pdflib_test extends \advanced_testcase {
     /**
      * Test get_export_fontlist function.
      *
-     * @covers ::get_export_fontlist
+     * @covers \pdf::get_export_fontlist
      *
      * @return void
      */

@@ -26,11 +26,13 @@
  */
 
 import {BaseComponent} from 'core/reactive';
-import ModalFactory from 'core/modal_factory';
+import Modal from 'core/modal';
+import ModalSaveCancel from 'core/modal_save_cancel';
+import ModalDeleteCancel from 'core/modal_delete_cancel';
 import ModalEvents from 'core/modal_events';
 import Templates from 'core/templates';
 import {prefetchStrings} from 'core/prefetch';
-import {get_string as getString} from 'core/str';
+import {getString} from 'core/str';
 import {getFirst} from 'core/normalise';
 import {toggleBulkSelectionAction} from 'core_courseformat/local/content/actions/bulkselection';
 import * as CourseEvents from 'core_course/events';
@@ -38,6 +40,7 @@ import Pending from 'core/pending';
 import ContentTree from 'core_courseformat/local/courseeditor/contenttree';
 // The jQuery module is only used for interacting with Boostrap 4. It can we removed when MDL-71979 is integrated.
 import jQuery from 'jquery';
+import Notification from "core/notification";
 
 // Load global strings.
 prefetchStrings('core', ['movecoursesection', 'movecoursemodule', 'confirm', 'delete']);
@@ -80,10 +83,15 @@ export default class extends BaseComponent {
             ACTIONMENUTOGGLER: `[data-toggle="dropdown"]`,
             // Availability modal selectors.
             OPTIONSRADIO: `[type='radio']`,
+            COURSEADDSECTION: `#course-addsection`,
+            MAXSECTIONSWARNING: `[data-region='max-sections-warning']`,
+            ADDSECTIONREGION: `[data-region='section-addsection']`,
         };
         // Component css classes.
         this.classes = {
             DISABLED: `disabled`,
+            ITALIC: `font-italic`,
+            DISPLAYNONE: `d-none`,
         };
     }
 
@@ -246,14 +254,12 @@ export default class extends BaseComponent {
         }
 
 
+        // Create the modal.
         // Build the modal parameters from the event data.
-        const modalParams = {
+        const modal = await this._modalBodyRenderedPromise(Modal, {
             title: titleText,
             body: Templates.render('core_courseformat/local/content/movesection', data),
-        };
-
-        // Create the modal.
-        const modal = await this._modalBodyRenderedPromise(modalParams);
+        });
 
         const modalBody = getFirst(modal.getBody());
 
@@ -321,20 +327,22 @@ export default class extends BaseComponent {
             data.cmid = cmInfo.id;
             data.cmname = cmInfo.name;
             data.information = await this.reactive.getFormatString('cmmove_info', data.cmname);
-            titleText = this.reactive.getFormatString('cmmove_title');
+            if (cmInfo.hasdelegatedsection) {
+                titleText = this.reactive.getFormatString('cmmove_subsectiontitle');
+            } else {
+                titleText = this.reactive.getFormatString('cmmove_title');
+            }
         } else {
             data.information = await this.reactive.getFormatString('cmsmove_info', cmIds.length);
             titleText = this.reactive.getFormatString('cmsmove_title');
         }
 
+        // Create the modal.
         // Build the modal parameters from the event data.
-        const modalParams = {
+        const modal = await this._modalBodyRenderedPromise(Modal, {
             title: titleText,
             body: Templates.render('core_courseformat/local/content/movecm', data),
-        };
-
-        // Create the modal.
-        const modal = await this._modalBodyRenderedPromise(modalParams);
+        });
 
         const modalBody = getFirst(modal.getBody());
 
@@ -358,16 +366,15 @@ export default class extends BaseComponent {
         // Open the cm section node if possible (Bootstrap 4 uses jQuery to interact with collapsibles).
         // All jQuery in this code can be replaced when MDL-71979 is integrated.
         cmIds.forEach(cmId => {
-            const currentElement = modalBody.querySelector(`${this.selectors.CMLINK}[data-id='${cmId}']`);
-            const sectionnode = currentElement.closest(this.selectors.SECTIONNODE);
-            const toggler = jQuery(sectionnode).find(this.selectors.MODALTOGGLER);
-            let collapsibleId = toggler.data('target') ?? toggler.attr('href');
-            if (collapsibleId) {
-                // We cannot be sure we have # in the id element name.
-                collapsibleId = collapsibleId.replace('#', '');
-                const expandNode = modalBody.querySelector(`#${collapsibleId}`);
-                jQuery(expandNode).collapse('show');
+            const cmInfo = this.reactive.get('cm', cmId);
+            let selector;
+            if (!cmInfo.hasdelegatedsection) {
+                selector = `${this.selectors.CMLINK}[data-id='${cmId}']`;
+            } else {
+                selector = `${this.selectors.SECTIONLINK}[data-id='${cmInfo.sectionid}']`;
             }
+            const currentElement = modalBody.querySelector(selector);
+            this._expandCmMoveModalParentSections(modalBody, currentElement);
         });
 
         modalBody.addEventListener('click', (event) => {
@@ -382,6 +389,7 @@ export default class extends BaseComponent {
 
             let targetSectionId;
             let targetCmId;
+            let droppedCmIds = [...cmIds];
             if (target.dataset.for == 'cm') {
                 const dropData = exporter.cmDraggableData(this.reactive.state, target.dataset.id);
                 targetSectionId = dropData.sectionid;
@@ -391,11 +399,52 @@ export default class extends BaseComponent {
                 targetSectionId = target.dataset.id;
                 targetCmId = section?.cmlist[0];
             }
-            this.reactive.dispatch('cmMove', cmIds, targetSectionId, targetCmId);
+            const section = this.reactive.get('section', targetSectionId);
+            if (section.component) {
+                // Remove cmIds which are not allowed to be moved to this delegated section (mostly
+                // all other delegated cm).
+                droppedCmIds = droppedCmIds.filter(cmId => {
+                    const cmInfo = this.reactive.get('cm', cmId);
+                    return !cmInfo.hasdelegatedsection;
+                });
+            }
+            if (droppedCmIds.length === 0) {
+                return; // No cm to move.
+            }
+            this.reactive.dispatch('cmMove', droppedCmIds, targetSectionId, targetCmId);
             this._destroyModal(modal, editTools);
         });
 
         pendingModalReady.resolve();
+    }
+
+    /**
+     * Expand all the modal tree branches that contains the element.
+     *
+     * Bootstrap 4 uses jQuery to interact with collapsibles.
+     * All jQuery in this code can be replaced when MDL-71979 is integrated.
+     *
+     * @private
+     * @param {HTMLElement} modalBody the modal body element
+     * @param {HTMLElement} element the element to display
+     */
+    _expandCmMoveModalParentSections(modalBody, element) {
+        const sectionnode = element.closest(this.selectors.SECTIONNODE);
+        if (!sectionnode) {
+            return;
+        }
+
+        const toggler = jQuery(sectionnode).find(this.selectors.MODALTOGGLER);
+        let collapsibleId = toggler.data('target') ?? toggler.attr('href');
+        if (collapsibleId) {
+            // We cannot be sure we have # in the id element name.
+            collapsibleId = collapsibleId.replace('#', '');
+            const expandNode = modalBody.querySelector(`#${collapsibleId}`);
+            jQuery(expandNode).collapse('show');
+        }
+
+        // Section are a tree structure, we need to expand all the parents.
+        this._expandCmMoveModalParentSections(modalBody, sectionnode.parentElement);
     }
 
     /**
@@ -407,6 +456,17 @@ export default class extends BaseComponent {
     async _requestAddSection(target, event) {
         event.preventDefault();
         this.reactive.dispatch('addSection', target.dataset.id ?? 0);
+    }
+
+    /**
+     * Handle a create subsection request.
+     *
+     * @param {Element} target the dispatch action element
+     * @param {Event} event the triggered event
+     */
+    async _requestAddModule(target, event) {
+        event.preventDefault();
+        this.reactive.dispatch('addModule', target.dataset.modname, target.dataset.sectionnum, target.dataset.beforemod);
     }
 
     /**
@@ -430,7 +490,7 @@ export default class extends BaseComponent {
             return (cmList.length || sectionInfo.hassummary || sectionInfo.rawtitle);
         });
         if (!needsConfirmation) {
-            this.reactive.dispatch('sectionDelete', sectionIds);
+            this._dispatchSectionDelete(sectionIds, target);
             return;
         }
 
@@ -445,13 +505,10 @@ export default class extends BaseComponent {
             bodyText = this.reactive.getFormatString('sectionsdelete_info', {count: sectionIds.length});
         }
 
-        const modalParams = {
+        const modal = await this._modalBodyRenderedPromise(ModalDeleteCancel, {
             title: titleText,
             body: bodyText,
-            type: ModalFactory.types.DELETE_CANCEL,
-        };
-
-        const modal = await this._modalBodyRenderedPromise(modalParams);
+        });
 
         modal.getRoot().on(
             ModalEvents.delete,
@@ -459,9 +516,23 @@ export default class extends BaseComponent {
                 // Stop the default save button behaviour which is to close the modal.
                 e.preventDefault();
                 modal.destroy();
-                this.reactive.dispatch('sectionDelete', sectionIds);
+                this._dispatchSectionDelete(sectionIds, target);
             }
         );
+    }
+
+    /**
+     * Dispatch the section delete action and handle the redirection if necessary.
+     *
+     * @param {Array} sectionIds  the IDs of the sections to delete.
+     * @param {Element} target the dispatch action element
+     */
+    async _dispatchSectionDelete(sectionIds, target) {
+        await this.reactive.dispatch('sectionDelete', sectionIds);
+        if (target.baseURI.includes('section.php')) {
+            // Redirect to the course main page if the section is the current page.
+            window.location.href = this.reactive.get('course').baseurl;
+        }
     }
 
     /**
@@ -492,11 +563,16 @@ export default class extends BaseComponent {
      * @param {string} mutationName the mutation name
      */
     async _requestMutationAction(target, event, mutationName) {
-        if (!target.dataset.id) {
+        if (!target.dataset.id && target.dataset.for !== 'bulkaction') {
             return;
         }
         event.preventDefault();
-        this.reactive.dispatch(mutationName, [target.dataset.id]);
+        if (target.dataset.for === 'bulkaction') {
+            // If the mutation is a bulk action we use the current selection.
+            this.reactive.dispatch(mutationName, this.reactive.get('bulk').selection);
+        } else {
+            this.reactive.dispatch(mutationName, [target.dataset.id]);
+        }
     }
 
     /**
@@ -531,17 +607,31 @@ export default class extends BaseComponent {
 
         let bodyText = null;
         let titleText = null;
+        let delegatedsection = null;
         if (cmIds.length == 1) {
             const cmInfo = this.reactive.get('cm', cmIds[0]);
-            titleText = getString('cmdelete_title', 'core_courseformat');
-            bodyText = getString(
-                'cmdelete_info',
-                'core_courseformat',
-                {
-                    type: cmInfo.modname,
-                    name: cmInfo.name,
-                }
-            );
+            if (cmInfo.hasdelegatedsection) {
+                delegatedsection = cmInfo.delegatesectionid;
+                titleText = this.reactive.getFormatString('cmdelete_subsectiontitle');
+                bodyText = getString(
+                    'sectiondelete_info',
+                    'core_courseformat',
+                    {
+                        type: cmInfo.modname,
+                        name: cmInfo.name,
+                    }
+                );
+            } else {
+                titleText = this.reactive.getFormatString('cmdelete_title');
+                bodyText = getString(
+                    'cmdelete_info',
+                    'core_courseformat',
+                    {
+                        type: cmInfo.modname,
+                        name: cmInfo.name,
+                    }
+                );
+            }
         } else {
             titleText = getString('cmsdelete_title', 'core_courseformat');
             bodyText = getString(
@@ -551,13 +641,10 @@ export default class extends BaseComponent {
             );
         }
 
-        const modalParams = {
+        const modal = await this._modalBodyRenderedPromise(ModalDeleteCancel, {
             title: titleText,
             body: bodyText,
-            type: ModalFactory.types.DELETE_CANCEL,
-        };
-
-        const modal = await this._modalBodyRenderedPromise(modalParams);
+        });
 
         modal.getRoot().on(
             ModalEvents.delete,
@@ -566,6 +653,13 @@ export default class extends BaseComponent {
                 e.preventDefault();
                 modal.destroy();
                 this.reactive.dispatch('cmDelete', cmIds);
+                if (cmIds.length == 1 && delegatedsection && target.baseURI.includes('section.php')) {
+                    // Redirect to the course main page if the subsection is the current page.
+                    let parameters = new URLSearchParams(window.location.search);
+                    if (parameters.has('id') && parameters.get('id') == delegatedsection) {
+                        this._dispatchSectionDelete([delegatedsection], target);
+                    }
+                }
             }
         );
     }
@@ -585,13 +679,11 @@ export default class extends BaseComponent {
         const data = {
             allowstealth: exporter.canUseStealth(this.reactive.state, cmIds),
         };
-        const modalParams = {
+        const modal = await this._modalBodyRenderedPromise(ModalSaveCancel, {
             title: getString('availability', 'core'),
             body: Templates.render('core_courseformat/local/content/cm/availabilitymodal', data),
             saveButtonText: getString('apply', 'core'),
-            type: ModalFactory.types.SAVE_CANCEL,
-        };
-        const modal = await this._modalBodyRenderedPromise(modalParams);
+        });
 
         this._setupMutationRadioButtonModal(modal, cmIds);
     }
@@ -608,13 +700,11 @@ export default class extends BaseComponent {
         }
         const title = (sectionIds.length == 1) ? 'sectionavailability_title' : 'sectionsavailability_title';
         // Show the availability modal to decide which action to trigger.
-        const modalParams = {
+        const modal = await this._modalBodyRenderedPromise(ModalSaveCancel, {
             title: this.reactive.getFormatString(title),
             body: Templates.render('core_courseformat/local/content/section/availabilitymodal', []),
             saveButtonText: getString('apply', 'core'),
-            type: ModalFactory.types.SAVE_CANCEL,
-        };
-        const modal = await this._modalBodyRenderedPromise(modalParams);
+        });
 
         this._setupMutationRadioButtonModal(modal, sectionIds);
     }
@@ -670,11 +760,30 @@ export default class extends BaseComponent {
      * @param {boolean} locked the new locked value.
      */
     _setAddSectionLocked(locked) {
-        const targets = this.getElements(this.selectors.ADDSECTION);
+        const targets = this.getElements(this.selectors.ADDSECTIONREGION);
         targets.forEach(element => {
             element.classList.toggle(this.classes.DISABLED, locked);
-            this.setElementLocked(element, locked);
+            const addSectionElement = element.querySelector(this.selectors.ADDSECTION);
+            addSectionElement.classList.toggle(this.classes.DISABLED, locked);
+            this.setElementLocked(addSectionElement, locked);
+            // We tweak the element to show a tooltip as a title attribute.
+            if (locked) {
+                getString('sectionaddmax', 'core_courseformat')
+                    .then((text) => addSectionElement.setAttribute('title', text))
+                    .catch(Notification.exception);
+                addSectionElement.style.pointerEvents = null; // Unlocks the pointer events.
+                addSectionElement.style.userSelect = null; // Unlocks the pointer events.
+            } else {
+                addSectionElement.setAttribute('title', addSectionElement.dataset.addSections);
+            }
         });
+        const courseAddSection = this.getElement(this.selectors.COURSEADDSECTION);
+        if (courseAddSection) {
+            const addSection = courseAddSection.querySelector(this.selectors.ADDSECTION);
+            addSection.classList.toggle(this.classes.DISPLAYNONE, locked);
+            const noMoreSections = courseAddSection.querySelector(this.selectors.MAXSECTIONSWARNING);
+            noMoreSections.classList.toggle(this.classes.DISPLAYNONE, !locked);
+        }
     }
 
     /**
@@ -687,6 +796,7 @@ export default class extends BaseComponent {
             element.style.pointerEvents = 'none';
             element.style.userSelect = 'none';
             element.classList.add(this.classes.DISABLED);
+            element.classList.add(this.classes.ITALIC);
             element.setAttribute('aria-disabled', true);
             element.addEventListener('click', event => event.preventDefault());
         }
@@ -695,12 +805,13 @@ export default class extends BaseComponent {
     /**
      * Render a modal and return a body ready promise.
      *
+     * @param {Modal} ModalClass the modal class
      * @param {object} modalParams the modal params
      * @return {Promise} the modal body ready promise
      */
-    _modalBodyRenderedPromise(modalParams) {
+    _modalBodyRenderedPromise(ModalClass, modalParams) {
         return new Promise((resolve, reject) => {
-            ModalFactory.create(modalParams).then((modal) => {
+            ModalClass.create(modalParams).then((modal) => {
                 modal.setRemoveOnClose(true);
                 // Handle body loading event.
                 modal.getRoot().on(ModalEvents.bodyRendered, () => {

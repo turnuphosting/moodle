@@ -16,8 +16,15 @@
 
 namespace mod_quiz;
 
+use coding_exception;
 use context_module;
 use core\output\inplace_editable;
+use mod_quiz\event\quiz_grade_item_created;
+use mod_quiz\event\quiz_grade_item_deleted;
+use mod_quiz\event\quiz_grade_item_updated;
+use mod_quiz\event\slot_grade_item_updated;
+use mod_quiz\event\slot_mark_updated;
+use mod_quiz\event\slot_version_updated;
 use mod_quiz\question\bank\qbank_helper;
 use mod_quiz\question\qubaids_for_quiz;
 use stdClass;
@@ -49,16 +56,24 @@ class structure {
     protected $slotsinorder = [];
 
     /**
-     * @var stdClass[] currently a dummy. Holds data that will match the
-     * quiz_sections, once it exists.
+     * @var stdClass[] this quiz's data from the quiz_sections table. Each item has a ->lastslot field too.
      */
     protected $sections = [];
+
+    /** @var stdClass[] quiz_grade_items for this quiz indexed by id. */
+    protected array $gradeitems = [];
 
     /** @var bool caches the results of can_be_edited. */
     protected $canbeedited = null;
 
     /** @var bool caches the results of can_add_random_question. */
     protected $canaddrandom = null;
+
+    /** @var array the slotids => question categories array for all slots containing a random question. */
+    protected $randomslotcategories = null;
+
+    /** @var array the slotids => question tags array for all slots containing a random question. */
+    protected $randomslottags = null;
 
     /**
      * Create an instance of this class representing an empty quiz.
@@ -523,7 +538,8 @@ class structure {
             }
         }
 
-        throw new \coding_exception('The \'slotid\' could not be found.');
+        throw new coding_exception('The slot with id ' . $slotid .
+                ' could not be found in the quiz with id ' . $this->get_quizid() . '.');
     }
 
     /**
@@ -531,11 +547,11 @@ class structure {
      *
      * @param int $slotnumber The slot number
      * @return stdClass
-     * @throws \coding_exception
+     * @throws coding_exception
      */
     public function get_slot_by_number($slotnumber) {
         if (!array_key_exists($slotnumber, $this->slotsinorder)) {
-            throw new \coding_exception('The \'slotnumber\' could not be found.');
+            throw new coding_exception('The \'slotnumber\' could not be found.');
         }
         return $this->slotsinorder[$slotnumber];
     }
@@ -719,6 +735,7 @@ class structure {
     protected function populate_structure() {
         global $DB;
 
+        $this->populate_grade_items();
         $slots = qbank_helper::get_question_structure($this->quizobj->get_quizid(), $this->quizobj->get_context());
         $this->questions = [];
         $this->slotsinorder = [];
@@ -734,6 +751,15 @@ class structure {
         $this->sections = $DB->get_records('quiz_sections', ['quizid' => $this->quizobj->get_quizid()], 'firstslot');
         $this->populate_slots_with_sections();
         $this->populate_question_numbers();
+    }
+
+    /**
+     * Load the information about the grade items for this quiz.
+     */
+    protected function populate_grade_items(): void {
+        global $DB;
+        $this->gradeitems = $DB->get_records('quiz_grade_items',
+                ['quizid' => $this->get_quizid()], 'sortorder');
     }
 
     /**
@@ -858,10 +884,10 @@ class structure {
         }
         if (($moveafterslotnumber > 0 && $page < $this->get_page_number_for_slot($moveafterslotnumber)) ||
                 $page < 1) {
-            throw new \coding_exception('The target page number is too small.');
+            throw new coding_exception('The target page number is too small.');
         } else if (!$this->is_last_slot_in_quiz($moveafterslotnumber) &&
                 $page > $this->get_page_number_for_slot($followingslotnumber)) {
-            throw new \coding_exception('The target page number is too large.');
+            throw new coding_exception('The target page number is too large.');
         }
 
         // Work out how things are being moved.
@@ -916,7 +942,7 @@ class structure {
         }
 
         if ($this->is_only_slot_in_section($movingslotnumber)) {
-            throw new \coding_exception('You cannot remove the last slot in a section.');
+            throw new coding_exception('You cannot remove the last slot in a section.');
         }
 
         $trans = $DB->start_delegated_transaction();
@@ -1026,7 +1052,7 @@ class structure {
      * Remove a slot from a quiz.
      *
      * @param int $slotnumber The number of the slot to be deleted.
-     * @throws \coding_exception
+     * @throws coding_exception
      */
     public function remove_slot($slotnumber) {
         global $DB;
@@ -1034,7 +1060,7 @@ class structure {
         $this->check_can_be_edited();
 
         if ($this->is_only_slot_in_section($slotnumber) && $this->get_section_count() > 1) {
-            throw new \coding_exception('You cannot remove the last slot in a section.');
+            throw new coding_exception('You cannot remove the last slot in a section.');
         }
 
         $slot = $DB->get_record('quiz_slots', ['quizid' => $this->get_quizid(), 'slot' => $slotnumber]);
@@ -1125,27 +1151,129 @@ class structure {
             return false;
         }
 
-        $trans = $DB->start_delegated_transaction();
-        $previousmaxmark = $slot->maxmark;
-        $slot->maxmark = $maxmark;
-        $DB->update_record('quiz_slots', $slot);
+        $transaction = $DB->start_delegated_transaction();
+        $DB->set_field('quiz_slots', 'maxmark', $maxmark, ['id' => $slot->id]);
         \question_engine::set_max_mark_in_attempts(new qubaids_for_quiz($slot->quizid),
                 $slot->slot, $maxmark);
-        $trans->allow_commit();
 
         // Log slot mark updated event.
         // We use $num + 0 as a trick to remove the useless 0 digits from decimals.
-        $event = \mod_quiz\event\slot_mark_updated::create([
+        $event = slot_mark_updated::create([
             'context' => $this->quizobj->get_context(),
             'objectid' => $slot->id,
             'other' => [
                 'quizid' => $this->get_quizid(),
-                'previousmaxmark' => $previousmaxmark + 0,
+                'previousmaxmark' => $slot->maxmark + 0,
                 'newmaxmark' => $maxmark + 0
             ]
         ]);
         $event->trigger();
 
+        $this->slotsinorder[$slot->slot]->maxmark = $maxmark;
+
+        $transaction->allow_commit();
+        return true;
+    }
+
+    /**
+     * Update the question version for a given slot, if necessary.
+     *
+     * @param int $id ID of row from the quiz_slots table.
+     * @param int|null $newversion The new question version for the slot.
+     *                             A null value means 'Always latest'.
+     * @return bool True if the version was updated, false if no update was required.
+     * @throws coding_exception If the specified version does not exist.
+     */
+    public function update_slot_version(int $id, ?int $newversion): bool {
+        global $DB;
+
+        $slot = $this->get_slot_by_id($id);
+        $context = $this->quizobj->get_context();
+        $refparams = ['usingcontextid' => $context->id, 'component' => 'mod_quiz', 'questionarea' => 'slot', 'itemid' => $slot->id];
+        $reference = $DB->get_record('question_references', $refparams, '*', MUST_EXIST);
+        $oldversion = is_null($reference->version) ? null : (int) $reference->version;
+        $reference->version = $newversion === 0 ? null : $newversion;
+        $existsparams = ['questionbankentryid' => $reference->questionbankentryid, 'version' => $newversion];
+        $versionexists = $DB->record_exists('question_versions', $existsparams);
+
+        // We are attempting to switch to an existing version.
+        // Verify that the version we want to switch to exists.
+        if (!is_null($newversion) && !$versionexists) {
+            throw new coding_exception(
+                'Version: ' . $newversion . ' ' .
+                'does not exist for question bank entry: ' . $reference->questionbankentryid
+            );
+        }
+
+        if ($newversion === $oldversion) {
+            return false;
+        }
+
+        $transaction = $DB->start_delegated_transaction();
+        $DB->update_record('question_references', $reference);
+        slot_version_updated::create([
+            'context' => $this->quizobj->get_context(),
+            'objectid' => $slot->id,
+            'other' => [
+                'quizid' => $this->get_quizid(),
+                'previousversion' => $oldversion,
+                'newversion' => $reference->version,
+            ],
+        ])->trigger();
+        $transaction->allow_commit();
+
+        return true;
+    }
+
+    /**
+     * Change which grade this slot contributes to, for quizzes with multiple grades.
+     *
+     * It does not update 'sumgrades' in the quiz table. If this method returns true,
+     * it will be necessary to recompute all the quiz grades.
+     *
+     * @param stdClass $slot row from the quiz_slots table.
+     * @param int|null $gradeitemid id of the grade item this slot should contribute to. 0 or null means none.
+     * @return bool true if the new $gradeitemid is different from the previous one.
+     */
+    public function update_slot_grade_item(stdClass $slot, ?int $gradeitemid): bool {
+        global $DB;
+
+        if ($gradeitemid === 0) {
+            $gradeitemid = null;
+        }
+
+        if ($gradeitemid !== null && !$this->is_real_question($slot->slot)) {
+            throw new coding_exception('Cannot set a grade item for a question that is ungraded.');
+        }
+
+        if ($slot->quizgradeitemid !== null) {
+            // Object $slot likely comes from the database, which means int may be
+            // represented as a string, which breaks the next test, so fix up.
+            $slot->quizgradeitemid = (int) $slot->quizgradeitemid;
+        }
+
+        if ($gradeitemid === $slot->quizgradeitemid) {
+            // Grade has not changed. Nothing to do.
+            return false;
+        }
+
+        $transaction = $DB->start_delegated_transaction();
+        $DB->set_field('quiz_slots', 'quizgradeitemid', $gradeitemid, ['id' => $slot->id]);
+
+        // Log slot mark updated event.
+        slot_grade_item_updated::create([
+            'context' => $this->quizobj->get_context(),
+            'objectid' => $slot->id,
+            'other' => [
+                'quizid' => $this->get_quizid(),
+                'previousgradeitem' => $slot->quizgradeitemid,
+                'newgradeitem' => $gradeitemid,
+            ],
+        ])->trigger();
+
+        $this->slotsinorder[$slot->slot]->quizgradeitemid = $gradeitemid;
+
+        $transaction->allow_commit();
         return true;
     }
 
@@ -1180,6 +1308,7 @@ class structure {
      */
     public function update_slot_display_number(int $slotid, string $displaynumber): void {
         global $DB;
+
         $DB->set_field('quiz_slots', 'displaynumber', $displaynumber, ['id' => $slotid]);
         $this->populate_structure();
 
@@ -1336,7 +1465,7 @@ class structure {
         global $DB;
         $section = $DB->get_record('quiz_sections', ['id' => $sectionid], '*', MUST_EXIST);
         if ($section->firstslot == 1) {
-            throw new \coding_exception('Cannot remove the first section in a quiz.');
+            throw new coding_exception('Cannot remove the first section in a quiz.');
         }
         $DB->delete_records('quiz_sections', ['id' => $sectionid]);
 
@@ -1373,20 +1502,327 @@ class structure {
         return $this->canaddrandom;
     }
 
+    /**
+     * Get the grade items defined for this quiz.
+     *
+     * @return stdClass[] quiz_grade_item rows, indexed by id.
+     */
+    public function get_grade_items(): array {
+        return $this->gradeitems;
+    }
 
     /**
-     * Retrieve the list of slot tags for the given slot id.
+     * Check the grade item with the given id belongs to this quiz.
      *
-     * @param int $slotid The id for the slot
-     * @return stdClass[] The list of slot tag records
-     * @deprecated since Moodle 4.0 MDL-71573
-     * @todo Final deprecation on Moodle 4.4 MDL-72438
+     * @param int $gradeitemid id of a quiz grade item.
+     * @throws coding_exception if the grade item does not belong to this quiz.
      */
-    public function get_slot_tags_for_slot_id($slotid) {
-        debugging('Function get_slot_tags_for_slot_id() has been deprecated and the structure
-         for this method have been moved to filtercondition in question_set_reference table, please
-          use the new structure instead.', DEBUG_DEVELOPER);
-        // All the associated code for this method have been removed to get rid of accidental call or errors.
-        return [];
+    public function verify_grade_item_is_ours(int $gradeitemid): void {
+        if (!array_key_exists($gradeitemid, $this->gradeitems)) {
+            throw new coding_exception('Grade item ' . $gradeitemid .
+                    ' does not belong to quiz ' . $this->get_quizid());
+        }
+    }
+
+    /**
+     * Is a particular quiz grade item used by any slots?
+     *
+     * @param int $gradeitemid id of a quiz grade item belonging to this quiz.
+     * @return bool true if it is used.
+     */
+    public function is_grade_item_used(int $gradeitemid): bool {
+        $this->verify_grade_item_is_ours($gradeitemid);
+
+        foreach ($this->slotsinorder as $slot) {
+            if ($slot->quizgradeitemid == $gradeitemid) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Get the total of marks of all questions assigned to this grade item, formatted for display.
+     *
+     * @param int $gradeitemid id of a quiz grade item belonging to this quiz.
+     * @return string total of marks of all questions assigned to this grade item.
+     */
+    public function formatted_grade_item_sum_marks(int $gradeitemid): string {
+        $this->verify_grade_item_is_ours($gradeitemid);
+
+        $summarks = 0;
+        foreach ($this->slotsinorder as $slot) {
+            if ($slot->quizgradeitemid == $gradeitemid) {
+                $summarks += $slot->maxmark;
+            }
+        }
+
+        return quiz_format_grade($this->get_quiz(), $summarks);
+    }
+
+    /**
+     * Create a grade item.
+     *
+     * The new grade item is added at the end of the order.
+     *
+     * @param stdClass $gradeitemdata must have property name - updated with the inserted data (sortorder and id).
+     */
+    public function create_grade_item(stdClass $gradeitemdata): void {
+        global $DB;
+
+        // Add to the end of the sort order.
+        $gradeitemdata->sortorder = $DB->get_field('quiz_grade_items',
+                'COALESCE(MAX(sortorder) + 1, 1)',
+                ['quizid' => $this->get_quizid()]);
+
+        // If name is blank, supply a default.
+        if ((string) $gradeitemdata->name === '') {
+            $count = 0;
+            do {
+                $count += 1;
+                $gradeitemdata->name = get_string('gradeitemdefaultname', 'quiz', $count);
+            } while ($DB->record_exists('quiz_grade_items',
+                ['quizid' => $this->get_quizid(), 'name' => $gradeitemdata->name]));
+        }
+
+        $transaction = $DB->start_delegated_transaction();
+
+        // Create the grade item.
+        $gradeitemdata->id = $DB->insert_record('quiz_grade_items', $gradeitemdata);
+        $this->gradeitems[$gradeitemdata->id] = $DB->get_record(
+                'quiz_grade_items', ['id' => $gradeitemdata->id]);
+
+        // Log.
+        quiz_grade_item_created::create([
+            'context' => $this->quizobj->get_context(),
+            'objectid' => $gradeitemdata->id,
+            'other' => [
+                'quizid' => $this->get_quizid(),
+            ],
+        ])->trigger();
+
+        $transaction->allow_commit();
+    }
+
+    /**
+     * Update a grade item.
+     *
+     * @param stdClass $gradeitemdata must have properties id and name.
+     */
+    public function update_grade_item(stdClass $gradeitemdata): void {
+        global $DB;
+
+        $this->verify_grade_item_is_ours($gradeitemdata->id);
+
+        $transaction = $DB->start_delegated_transaction();
+
+        // Update the grade item.
+        $DB->update_record('quiz_grade_items', $gradeitemdata);
+        $this->gradeitems[$gradeitemdata->id] = $DB->get_record(
+                'quiz_grade_items', ['id' => $gradeitemdata->id]);
+
+        // Log.
+        quiz_grade_item_updated::create([
+            'context' => $this->quizobj->get_context(),
+            'objectid' => $gradeitemdata->id,
+            'other' => [
+                'quizid' => $this->get_quizid(),
+            ],
+        ])->trigger();
+
+        $transaction->allow_commit();
+    }
+
+    /**
+     * Delete a grade item (only if it is not used).
+     *
+     * @param int $gradeitemid id of the grade item to delete. Must belong to this quiz.
+     */
+    public function delete_grade_item(int $gradeitemid): void {
+        global $DB;
+
+        if ($this->is_grade_item_used($gradeitemid)) {
+            throw new coding_exception('Cannot delete a quiz grade item which is used.');
+        }
+
+        $transaction = $DB->start_delegated_transaction();
+
+        $DB->delete_records('quiz_grade_items', ['id' => $gradeitemid]);
+        unset($this->gradeitems[$gradeitemid]);
+
+        // Log.
+        quiz_grade_item_deleted::create([
+            'context' => $this->quizobj->get_context(),
+            'objectid' => $gradeitemid,
+            'other' => [
+                'quizid' => $this->get_quizid(),
+            ],
+        ])->trigger();
+
+        $transaction->allow_commit();
+    }
+
+    /**
+     * @deprecated since Moodle 4.0 MDL-71573
+     */
+    public function get_slot_tags_for_slot_id() {
+        throw new \coding_exception(__FUNCTION__ . '() has been removed.');
+    }
+
+    /**
+     * Add a random question to the quiz at a given point.
+     *
+     * @param int $addonpage the page on which to add the question.
+     * @param int $number the number of random questions to add.
+     * @param array $filtercondition the filter condition. Must contain at least a category filter.
+     */
+    public function add_random_questions(int $addonpage, int $number, array $filtercondition): void {
+        global $DB;
+
+        if (!isset($filtercondition['filter']['category'])) {
+            throw new \invalid_parameter_exception('$filtercondition must contain at least a category filter.');
+        }
+        $categoryid = $filtercondition['filter']['category']['values'][0];
+
+        $category = $DB->get_record('question_categories', ['id' => $categoryid]);
+        if (!$category) {
+            new \moodle_exception('invalidcategoryid');
+        }
+
+        $catcontext = \context::instance_by_id($category->contextid);
+        require_capability('moodle/question:useall', $catcontext);
+
+        // Create the selected number of random questions.
+        for ($i = 0; $i < $number; $i++) {
+            // Slot data.
+            $randomslotdata = new stdClass();
+            $randomslotdata->quizid = $this->get_quizid();
+            $randomslotdata->usingcontextid = context_module::instance($this->get_cmid())->id;
+            $randomslotdata->questionscontextid = $category->contextid;
+            $randomslotdata->maxmark = 1;
+
+            $randomslot = new \mod_quiz\local\structure\slot_random($randomslotdata);
+            $randomslot->set_quiz($this->get_quiz());
+            $randomslot->set_filter_condition(json_encode($filtercondition));
+            $randomslot->insert($addonpage);
+        }
+    }
+
+    /**
+     * Get a human-readable description of a random slot.
+     *
+     * @param int $slotid id of slot.
+     * @return string that can be used to display the random slot.
+     */
+    public function describe_random_slot(int $slotid): string {
+        $this->ensure_random_slot_info_loaded();
+
+        if (!isset($this->randomslotcategories[$slotid])) {
+            throw new coding_exception('Called describe_random_slot on slot id ' .
+                $slotid . ' which is not a random slot.');
+        }
+
+        // Build the random question name with categories and tags information and return.
+        $a = new stdClass();
+        $a->category = $this->randomslotcategories[$slotid];
+        $stringid = 'randomqnamecat';
+
+        if (!empty($this->randomslottags[$slotid])) {
+            $a->tags = $this->randomslottags[$slotid];
+            $stringid = 'randomqnamecattags';
+        }
+
+        return shorten_text(get_string($stringid, 'quiz', $a), 255);
+    }
+
+    /**
+     * Ensure that {@see load_random_slot_info()} has been called, so the data is available.
+     */
+    protected function ensure_random_slot_info_loaded(): void {
+        if ($this->randomslotcategories == null) {
+            $this->load_random_slot_info();
+        }
+    }
+
+    /**
+     * Load information about the question categories and tags for all random slots,
+     */
+    protected function load_random_slot_info(): void {
+        global $DB;
+
+        // Find the random slots.
+        $allslots = $this->get_slots();
+        foreach ($allslots as $key => $slot) {
+            if ($slot->qtype != 'random') {
+                unset($allslots[$key]);
+            }
+        }
+        if (empty($allslots)) {
+            // No random slots. Nothing to do.
+            $this->randomslotcategories = [];
+            $this->randomslottags = [];
+            return;
+        }
+
+        // Loop over all random slots to build arrays of the data we will need.
+        $tagids = [];
+        $questioncategoriesids = [];
+        $randomcategoriesandtags = []; // An associative array of slotid => ['cat' => catid, 'tag' => [tagid, tagid, ...]].
+        foreach ($allslots as $slotid => $slot) {
+            foreach ($slot->filtercondition as $name => $value) {
+                if ($name !== 'filter') {
+                    continue;
+                }
+
+                // Parse the filter condition.
+                foreach ($value as $filteroption => $filtervalue) {
+                    if ($filteroption === 'category') {
+                        $randomcategoriesandtags[$slotid]['cat'] = $filtervalue['values'];
+                        $questioncategoriesids[] = $filtervalue['values'][0];
+                    }
+
+                    if ($filteroption === 'qtagids') {
+                        foreach ($filtervalue as $qtagidsoption => $qtagidsvalue) {
+                            if ($qtagidsoption !== 'values') {
+                                continue;
+                            }
+                            foreach ($qtagidsvalue as $qtagidsvaluevalue) {
+                                $randomcategoriesandtags[$slotid]['tag'][] = $qtagidsvaluevalue;
+                                $tagids[] = $qtagidsvaluevalue;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Get names for all tags into a tagid => name array.
+        $tags = \core_tag_tag::get_bulk($tagids, 'id, rawname');
+        $tagnames = array_map(fn($tag) => $tag->get_display_name(), $tags);
+
+        // Get names for all question categories.
+        $categories = $DB->get_records_list('question_categories', 'id', $questioncategoriesids,
+            'id', 'id, name, contextid, parent');
+        $categorynames = [];
+        foreach ($categories as $id => $category) {
+            if ($category->name === 'top') {
+                $categoryname = $DB->get_field('question_categories', 'name', ['parent' => $id]);
+            } else {
+                $categoryname = $category->name;
+            }
+            $categorynames[$id] = $categoryname;
+        }
+
+        // Now, put the data required for each slot into $this->randomslotcategories and $this->randomslottags.
+        foreach ($randomcategoriesandtags as $slotid => $catandtags) {
+            $this->randomslotcategories[$slotid] = $categorynames[$catandtags['cat'][0]];
+            if (isset($catandtags['tag'])) {
+                $slottagnames = [];
+                foreach ($catandtags['tag'] as $tagid) {
+                    $slottagnames[] = $tagnames[$tagid];
+                }
+                $this->randomslottags[$slotid] = implode(', ', $slottagnames);
+            }
+        }
     }
 }

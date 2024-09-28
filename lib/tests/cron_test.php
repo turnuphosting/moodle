@@ -29,14 +29,12 @@ class cron_test extends \advanced_testcase {
      * Reset relevant caches between tests.
      */
     public function setUp(): void {
+        parent::setUp();
         cron::reset_user_cache();
     }
 
     /**
      * Test the setup_user function.
-     *
-     * @covers ::setup_user
-     * @covers ::reset_user_cache
      */
     public function test_setup_user(): void {
         // This function uses the $GLOBALS super global. Disable the VariableNameLowerCase sniff for this function.
@@ -76,7 +74,7 @@ class cron_test extends \advanced_testcase {
         $this->assertSame($user1->id, $USER->id);
         $this->assertSame($PAGE->context, \context_course::instance($SITE->id));
         $this->assertNotSame($adminsession, $SESSION);
-        $this->assertObjectNotHasAttribute('test1', $SESSION);
+        $this->assertObjectNotHasProperty('test1', $SESSION);
         $this->assertEmpty((array)$SESSION);
         $usersession1 = $SESSION;
         $SESSION->test2 = true;

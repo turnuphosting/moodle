@@ -37,6 +37,7 @@ class state_store_test extends advanced_testcase {
     public static function setUpBeforeClass(): void {
         global $CFG;
         require_once($CFG->dirroot.'/lib/xapi/tests/helper.php');
+        parent::setUpBeforeClass();
     }
 
     /**
@@ -113,7 +114,7 @@ class state_store_test extends advanced_testcase {
      *
      * @return array
      */
-    public function states_provider() : array {
+    public function states_provider(): array {
         return [
             'Existing and valid state' => [
                 'info' => [],
@@ -193,7 +194,7 @@ class state_store_test extends advanced_testcase {
      *
      * @return array
      */
-    public function put_states_provider() : array {
+    public function put_states_provider(): array {
         return [
             'Update existing state' => [
                 'info' => [],
@@ -334,7 +335,7 @@ class state_store_test extends advanced_testcase {
      *
      * @return array
      */
-    public function reset_wipe_states_provider() : array {
+    public function reset_wipe_states_provider(): array {
         return [
             'With fake_component' => [
                 'info' => [],

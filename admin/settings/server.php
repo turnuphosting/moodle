@@ -150,8 +150,6 @@ if ($hassiteconfig) {
 
     // HTTP.
     $temp = new admin_settingpage('http', new lang_string('http', 'admin'));
-    $temp->add(new admin_setting_configcheckbox('slasharguments', new lang_string('slasharguments', 'admin'),
-        new lang_string('configslasharguments', 'admin'), 1));
     $temp->add(new admin_setting_heading('reverseproxy', new lang_string('reverseproxy', 'admin'), '', ''));
     $options = [
         0 => 'HTTP_CLIENT_IP, HTTP_X_FORWARDED_FOR, REMOTE_ADDR',
@@ -390,6 +388,17 @@ if ($hassiteconfig) {
             30 * MINSECS
         )
     );
+
+    $temp->add(
+        new admin_setting_configduration(
+            'task_adhoc_failed_retention',
+            new lang_string('task_adhoc_failed_retention', 'admin'),
+            new lang_string('task_adhoc_failed_retention_desc', 'admin'),
+            \core\task\manager::ADHOC_TASK_FAILED_RETENTION,
+            WEEKSECS
+        )
+    );
+
     $ADMIN->add('taskconfig', $temp);
 
     // Task log configuration.
@@ -452,6 +461,12 @@ if ($hassiteconfig) {
 
     // Outgoing mail configuration.
     $temp = new admin_settingpage('outgoingmailconfig', new lang_string('outgoingmailconfig', 'admin'));
+
+    if (!empty($CFG->noemailever)) {
+        $noemaileverwarning = new \core\output\notification(get_string('noemaileverwarning', 'admin'),
+        \core\output\notification::NOTIFY_ERROR);
+        $temp->add(new admin_setting_heading('outgoingmaildisabled', '', $OUTPUT->render($noemaileverwarning)));
+    }
 
     $temp->add(new admin_setting_heading('smtpheading', new lang_string('smtp', 'admin'),
         new lang_string('smtpdetail', 'admin')));

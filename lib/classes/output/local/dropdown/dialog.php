@@ -17,7 +17,7 @@
 namespace core\output\local\dropdown;
 
 use core\output\named_templatable;
-use renderable;
+use core\output\renderable;
 
 /**
  * Class to render a dropdown dialog element.
@@ -79,6 +79,11 @@ class dialog implements named_templatable, renderable {
      * @var array extra HTML attributes (attribute => value).
      */
     protected $extras = [];
+
+    /**
+     * @var bool if the element is disabled.
+     */
+    protected $disabled = false;
 
     /**
      * Constructor.
@@ -179,7 +184,7 @@ class dialog implements named_templatable, renderable {
      * @param string $value the value
      */
     public function add_button_id(string $value) {
-        $this->extras['id'] = $value;
+        $this->extras['buttonid'] = $value;
     }
 
     /**
@@ -191,6 +196,14 @@ class dialog implements named_templatable, renderable {
     }
 
     /**
+     * Set the dropdown disabled attribute.
+     * @param bool $disabled the disabled value
+     */
+    public function set_disabled(bool $disabled) {
+        $this->disabled = $disabled;
+    }
+
+    /**
      * Export this data so it can be used as the context for a mustache template (core/inplace_editable).
      *
      * @param \renderer_base $output typically, the renderer that's calling this function
@@ -198,6 +211,11 @@ class dialog implements named_templatable, renderable {
      */
     public function export_for_template(\renderer_base $output): array {
         $extras = [];
+        // Id is required to add JS controls to the dropdown.
+        $dropdownid = $this->extras['id'] ?? \html_writer::random_id('dropdownDialog_');
+        if (isset($this->extras['id'])) {
+            unset($this->extras['id']);
+        }
         foreach ($this->extras as $attribute => $value) {
             $extras[] = [
                 'attribute' => $attribute,
@@ -206,7 +224,8 @@ class dialog implements named_templatable, renderable {
         }
         $data = [
             // Id is required for the correct HTML labelling.
-            'buttonid' => \html_writer::random_id('dropwdownbutton_'),
+            'dropdownid' => $dropdownid,
+            'buttonid' => $this->extras['buttonid'] ?? \html_writer::random_id('dropwdownbutton_'),
             'buttoncontent' => (string) $this->buttoncontent,
             'dialogcontent' => (string) $this->dialogcontent,
             'classes' => $this->classes,
@@ -214,6 +233,9 @@ class dialog implements named_templatable, renderable {
             'dialogclasses' => $this->dropdownwidth,
             'extras' => $extras,
         ];
+        if ($this->disabled) {
+            $data['disabledbutton'] = true;
+        }
         // Bootstrap 4 dropdown position still uses left and right literals.
         $data["position"] = $this->dropdownposition;
         if (right_to_left()) {

@@ -17,9 +17,7 @@
 namespace gradereport_singleview\report;
 
 use context_course;
-use grade_helper;
 use grade_report;
-use html_writer;
 use moodle_url;
 use renderer_base;
 use stdClass;
@@ -133,7 +131,9 @@ class singleview extends grade_report {
 
     protected function setup_groups() {
         parent::setup_groups();
-        $this->group_selector = static::groups_course_menu($this->course, $this->pbarurl);
+        if ($this->groupmode) {
+            $this->group_selector = static::groups_course_menu($this->course);
+        }
     }
 
     /**
@@ -141,19 +141,12 @@ class singleview extends grade_report {
      * so all reports would automatically use it.
      *
      * @param stdClass $course
-     * @param moodle_url $urlroot
      * @return string
      */
-    protected static function groups_course_menu(stdClass $course, moodle_url $urlroot) {
+    protected static function groups_course_menu(stdClass $course) {
         global $PAGE;
 
-        $renderer = $PAGE->get_renderer('core_grades');
-        $params = $urlroot->params();
-        if ($params['item'] == 'user') {
-            $params['item'] = 'user_select';
-            $urlroot->params($params);
-        }
-        return $renderer->group_selector($course, $urlroot->out());
+        return $PAGE->get_renderer('core', 'course')->render(new \core_course\output\actionbar\group_selector($PAGE->context));
     }
 
     /**
@@ -180,7 +173,7 @@ class singleview extends grade_report {
      * @param renderer_base $output
      * @return string HTML to display
      */
-    public function bulk_actions_menu(renderer_base $output) : string {
+    public function bulk_actions_menu(renderer_base $output): string {
         $options = [
             'overrideallgrades' => get_string('overrideallgrades', 'gradereport_singleview'),
             'overridenonegrades' => get_string('overridenonegrades', 'gradereport_singleview'),
@@ -197,7 +190,7 @@ class singleview extends grade_report {
                 ['data-action' => $type, 'data-role' => 'bulkaction']);
             $menu->add($action);
         }
-        $menu->attributes['class'] .= ' float-left my-auto';
+        $menu->attributes['class'] .= ' float-start my-auto';
 
         return $output->render($menu);
     }

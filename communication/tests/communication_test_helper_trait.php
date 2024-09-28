@@ -25,7 +25,6 @@ namespace core_communication;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 trait communication_test_helper_trait {
-
     /**
      * Setup necessary configs for communication subsystem.
      *
@@ -33,6 +32,15 @@ trait communication_test_helper_trait {
      */
     protected function setup_communication_configs(): void {
         set_config('enablecommunicationsubsystem', 1);
+    }
+
+    /**
+     * Disable configs for communication subsystem.
+     *
+     * @return void
+     */
+    protected function disable_communication_configs(): void {
+        set_config('enablecommunicationsubsystem', 0);
     }
 
     /**
@@ -44,7 +52,8 @@ trait communication_test_helper_trait {
      */
     protected function get_course(
         string $roomname = 'Sampleroom',
-        string $provider = 'communication_matrix'
+        string $provider = 'communication_matrix',
+        array $extrafields = [],
     ): \stdClass {
 
         $this->setup_communication_configs();
@@ -53,7 +62,7 @@ trait communication_test_helper_trait {
             'communicationroomname' => $roomname,
         ];
 
-        return $this->getDataGenerator()->create_course($records);
+        return $this->getDataGenerator()->create_course(array_merge($records, $extrafields));
     }
 
     /**
@@ -74,9 +83,49 @@ trait communication_test_helper_trait {
         $records = [
             'firstname' => $firstname,
             'lastname' => $lastname,
-            'username' => $username
+            'username' => $username,
         ];
 
         return $this->getDataGenerator()->create_user($records);
+    }
+
+
+    /**
+     * Create a stored_file in a draft file area from a fixture file.
+     *
+     * @param string $filename The file name within the communication/tests/fixtures folder.
+     * @param string $storedname The name to use in the database.
+     * @return \stored_file
+     */
+    protected function create_communication_file(
+        string $filename,
+        string $storedname,
+    ): \stored_file {
+        global $CFG;
+
+        $fs = get_file_storage();
+
+        $itemid = file_get_unused_draft_itemid();
+        return $fs->create_file_from_pathname((object) [
+            'contextid' => \context_system::instance()->id,
+            'component' => 'user',
+            'filearea' => 'draftfile',
+            'itemid' => $itemid,
+            'filepath' => '/',
+            'filename' => $storedname,
+        ], "{$CFG->dirroot}/communication/tests/fixtures/{$filename}");
+    }
+
+    /**
+     * Helper to execute a particular task.
+     *
+     * @param string $task The task.
+     */
+    private function execute_task(string $task): void {
+        // Run the scheduled task.
+        ob_start();
+        $task = \core\task\manager::get_scheduled_task($task);
+        $task->execute();
+        ob_end_clean();
     }
 }

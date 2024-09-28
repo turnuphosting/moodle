@@ -147,6 +147,19 @@ class profile_field_base {
     }
 
     /**
+     * Display the name of the profile field.
+     *
+     * @param bool $escape
+     * @return string
+     */
+    public function display_name(bool $escape = true): string {
+        return format_string($this->field->name, true, [
+            'context' => context_system::instance(),
+            'escape' => $escape,
+        ]);
+    }
+
+    /**
      * Print out the form field in the edit profile page
      * @param MoodleQuickForm $mform instance of the moodleform class
      * @return bool
@@ -258,7 +271,7 @@ class profile_field_base {
      * @param MoodleQuickForm $mform instance of the moodleform class
      */
     public function edit_field_set_default($mform) {
-        if (!empty($this->field->defaultdata)) {
+        if (isset($this->field->defaultdata)) {
             $mform->setDefault($this->inputname, $this->field->defaultdata);
         }
     }
@@ -585,6 +598,16 @@ class profile_field_base {
      */
     public function get_field_properties() {
         return array(PARAM_RAW, NULL_NOT_ALLOWED);
+    }
+
+    /**
+     * Whether to display the field and content to the user
+     *
+     * @param context|null $context
+     * @return bool
+     */
+    public function show_field_content(?context $context = null): bool {
+        return $this->is_visible($context) && !$this->is_empty();
     }
 
     /**
@@ -987,7 +1010,7 @@ function get_profile_field_list(): array {
             if (!isset($data[$categoryname])) {
                 $data[$categoryname] = [];
             }
-            $data[$categoryname][$field->inputname] = $field->field->name;
+            $data[$categoryname][$field->inputname] = $field->display_name();
         }
     }
     return $data;

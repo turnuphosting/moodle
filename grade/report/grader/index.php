@@ -28,12 +28,16 @@ require_once($CFG->dirroot.'/user/renderer.php');
 require_once($CFG->dirroot.'/grade/lib.php');
 require_once($CFG->dirroot.'/grade/report/grader/lib.php');
 
+// This report may require a lot of memory and time on large courses.
+raise_memory_limit(MEMORY_HUGE);
+set_time_limit(120);
+
 $courseid      = required_param('id', PARAM_INT);        // course id
 $page          = optional_param('page', 0, PARAM_INT);   // active page
 $edit          = optional_param('edit', -1, PARAM_BOOL); // sticky editting mode
 
 $sortitemid    = optional_param('sortitemid', 0, PARAM_ALPHANUMEXT);
-$sort          = optional_param('sort', '', PARAM_TEXT);
+$sort          = optional_param('sort', '', PARAM_ALPHA);
 $action        = optional_param('action', 0, PARAM_ALPHAEXT);
 $move          = optional_param('move', 0, PARAM_INT);
 $type          = optional_param('type', 0, PARAM_ALPHA);
@@ -45,11 +49,12 @@ $graderreportsifirst  = optional_param('sifirst', null, PARAM_NOTAGS);
 $graderreportsilast   = optional_param('silast', null, PARAM_NOTAGS);
 
 $studentsperpage = optional_param('perpage', null, PARAM_INT);
+$baseurl = new moodle_url('/grade/report/grader/index.php', ['id' => $courseid]);
 
 $PAGE->set_url(new moodle_url('/grade/report/grader/index.php', array('id'=>$courseid)));
 $PAGE->set_pagelayout('report');
 $PAGE->requires->js_call_amd('gradereport_grader/stickycolspan', 'init');
-$PAGE->requires->js_call_amd('gradereport_grader/search', 'init');
+$PAGE->requires->js_call_amd('gradereport_grader/user', 'init', [$baseurl->out(false)]);
 $PAGE->requires->js_call_amd('gradereport_grader/feedback_modal', 'init');
 $PAGE->requires->js_call_amd('core_grades/gradebooksetup_forms', 'init');
 
@@ -57,6 +62,12 @@ $PAGE->requires->js_call_amd('core_grades/gradebooksetup_forms', 'init');
 if (!$course = $DB->get_record('course', array('id' => $courseid))) {
     throw new \moodle_exception('invalidcourseid');
 }
+
+// Conditionally add the group JS if we have groups enabled.
+if ($course->groupmode) {
+    $PAGE->requires->js_call_amd('core_course/actionbar/group', 'init', [$baseurl->out(false)]);
+}
+
 require_login($course);
 $context = context_course::instance($course->id);
 
@@ -124,9 +135,12 @@ grade_regrade_final_grades_if_required($course);
 
 //Initialise the grader report object that produces the table
 //the class grade_report_grader_ajax was removed as part of MDL-21562
-if ($sort) {
-    $sort = strtoupper($sort);
+if ($sort && strcasecmp($sort, 'desc') !== 0) {
+    $sort = 'asc';
 }
+// We have lots of hardcoded 'ASC' and 'DESC' strings in grade/report/grader.lib :(. So we need to uppercase the sort.
+$sort = strtoupper($sort);
+
 $report = new grade_report_grader($courseid, $gpr, $context, $page, $sortitemid, $sort);
 
 // We call this a little later since we need some info from the grader report.
@@ -182,8 +196,9 @@ if ($studentsperpage) {
 $pagingoptions = array_unique($pagingoptions);
 sort($pagingoptions);
 $pagingoptions = array_combine($pagingoptions, $pagingoptions);
-if ($numusers > grade_report_grader::MAX_STUDENTS_PER_PAGE) {
-    $pagingoptions['0'] = grade_report_grader::MAX_STUDENTS_PER_PAGE;
+$maxusers = $report->get_max_students_per_page();
+if ($numusers > $maxusers) {
+    $pagingoptions['0'] = $maxusers;
 } else {
     $pagingoptions['0'] = get_string('all');
 }
@@ -206,7 +221,7 @@ $footercontent = html_writer::div(
 );
 
 // The number of students per page is always limited even if it is claimed to be unlimited.
-$studentsperpage = $studentsperpage ?: grade_report_grader::MAX_STUDENTS_PER_PAGE;
+$studentsperpage = $studentsperpage ?: $maxusers;
 $footercontent .= html_writer::div(
     $OUTPUT->paging_bar($numusers, $report->page, $studentsperpage, $report->pbarurl),
     'col'

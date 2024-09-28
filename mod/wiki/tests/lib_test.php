@@ -48,7 +48,7 @@ class lib_test extends \advanced_testcase {
      *
      * @return void
      */
-    public function test_wiki_view() {
+    public function test_wiki_view(): void {
         global $CFG;
 
         $CFG->enablecompletion = COMPLETION_ENABLED;
@@ -92,7 +92,7 @@ class lib_test extends \advanced_testcase {
      *
      * @return void
      */
-    public function test_wiki_page_view() {
+    public function test_wiki_page_view(): void {
         global $CFG;
 
         $CFG->enablecompletion = COMPLETION_ENABLED;
@@ -137,7 +137,7 @@ class lib_test extends \advanced_testcase {
      *
      * @return void
      */
-    public function test_wiki_user_can_edit() {
+    public function test_wiki_user_can_edit(): void {
         global $DB;
 
         $this->resetAfterTest();
@@ -203,7 +203,7 @@ class lib_test extends \advanced_testcase {
      *
      * @return void
      */
-    public function test_wiki_user_can_edit_with_groups_collaborative() {
+    public function test_wiki_user_can_edit_with_groups_collaborative(): void {
         global $DB;
 
         $this->resetAfterTest();
@@ -298,7 +298,7 @@ class lib_test extends \advanced_testcase {
      *
      * @return void
      */
-    public function test_wiki_user_can_edit_with_groups_individual() {
+    public function test_wiki_user_can_edit_with_groups_individual(): void {
         global $DB;
 
         $this->resetAfterTest();
@@ -399,7 +399,7 @@ class lib_test extends \advanced_testcase {
      *
      * @return void
      */
-    public function test_wiki_get_visible_subwikis_without_groups() {
+    public function test_wiki_get_visible_subwikis_without_groups(): void {
         global $DB;
 
         $this->resetAfterTest();
@@ -477,7 +477,7 @@ class lib_test extends \advanced_testcase {
      *
      * @return void
      */
-    public function test_wiki_get_visible_subwikis_with_groups_collaborative() {
+    public function test_wiki_get_visible_subwikis_with_groups_collaborative(): void {
         global $DB;
 
         $this->resetAfterTest();
@@ -561,7 +561,7 @@ class lib_test extends \advanced_testcase {
      *
      * @return void
      */
-    public function test_wiki_get_visible_subwikis_with_groups_individual() {
+    public function test_wiki_get_visible_subwikis_with_groups_individual(): void {
         global $DB;
 
         $this->resetAfterTest();
@@ -656,7 +656,7 @@ class lib_test extends \advanced_testcase {
         $this->assertEqualsCanonicalizing($expectedsubwikis, $result);
     }
 
-    public function test_mod_wiki_get_tagged_pages() {
+    public function test_mod_wiki_get_tagged_pages(): void {
         global $DB;
 
         $this->resetAfterTest();
@@ -740,7 +740,7 @@ class lib_test extends \advanced_testcase {
         $this->assertEmpty($res->nextpageurl);
     }
 
-    public function test_wiki_core_calendar_provide_event_action() {
+    public function test_wiki_core_calendar_provide_event_action(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
 
@@ -766,7 +766,7 @@ class lib_test extends \advanced_testcase {
         $this->assertTrue($actionevent->is_actionable());
     }
 
-    public function test_wiki_core_calendar_provide_event_action_for_non_user() {
+    public function test_wiki_core_calendar_provide_event_action_for_non_user(): void {
         global $CFG;
 
         $this->resetAfterTest();
@@ -794,7 +794,7 @@ class lib_test extends \advanced_testcase {
         $this->assertNull($actionevent);
     }
 
-    public function test_wiki_core_calendar_provide_event_action_for_user() {
+    public function test_wiki_core_calendar_provide_event_action_for_user(): void {
         global $CFG;
 
         $this->resetAfterTest();
@@ -827,7 +827,7 @@ class lib_test extends \advanced_testcase {
         $this->assertTrue($actionevent->is_actionable());
     }
 
-    public function test_wiki_core_calendar_provide_event_action_already_completed() {
+    public function test_wiki_core_calendar_provide_event_action_already_completed(): void {
         global $CFG;
 
         $this->resetAfterTest();
@@ -861,7 +861,7 @@ class lib_test extends \advanced_testcase {
         $this->assertNull($actionevent);
     }
 
-    public function test_wiki_core_calendar_provide_event_action_already_completed_for_user() {
+    public function test_wiki_core_calendar_provide_event_action_already_completed_for_user(): void {
         global $CFG;
 
         $this->resetAfterTest();
@@ -921,5 +921,27 @@ class lib_test extends \advanced_testcase {
         $event->timestart = time();
 
         return \calendar_event::create($event);
+    }
+
+    /**
+     * Tests the wiki_parser_real_path function to ensure it correctly resolves URLs.
+     *
+     * @covers ::wiki_parser_real_path()
+     */
+    public function test_wiki_parser_real_path(): void {
+        global $CFG;
+        $this->resetAfterTest();
+
+        // Create the activity.
+        $course = $this->getDataGenerator()->create_course(['enablecompletion' => 1]);
+        $wiki = $this->getDataGenerator()->create_module('wiki', ['course' => $course->id]);
+        $context = \context_module::instance($wiki->cmid);
+
+        $moodleurl = new \moodle_url('/mod/wiki/view.php', ['id' => 2]);
+        $url = wiki_parser_real_path($moodleurl->out(), $context, 'mod_wiki', 'attachments', 3);
+        $this->assertSame("{$CFG->wwwroot}/mod/wiki/view.php?id=2", $url);
+
+        $url = wiki_parser_real_path('mod/wiki/view.php?id=2', $context, 'mod_wiki', 'attachments', 3);
+        $this->assertSame("{$CFG->wwwroot}/pluginfile.php/{$context->id}/mod_wiki/attachments/3/mod/wiki/view.php?id=2", $url);
     }
 }

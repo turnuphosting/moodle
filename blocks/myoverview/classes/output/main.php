@@ -363,7 +363,14 @@ class main implements renderable, templatable {
         if (!$this->displaygroupingcustomfield) {
             return [];
         }
-        $fieldid = $DB->get_field('customfield_field', 'id', ['shortname' => $this->customfiltergrouping]);
+
+        // Get the relevant customfield ID within the core_course/course component/area.
+        $fieldid = $DB->get_field_sql("
+            SELECT f.id
+              FROM {customfield_field} f
+              JOIN {customfield_category} c ON c.id = f.categoryid
+             WHERE f.shortname = :shortname AND c.component = 'core_course' AND c.area = 'course'
+        ", ['shortname' => $this->customfiltergrouping]);
         if (!$fieldid) {
             return [];
         }
@@ -496,82 +503,70 @@ class main implements renderable, templatable {
 
         $nocoursesimg = $output->image_url('courses', 'block_myoverview');
 
+        $buttons = [];
         $coursecat = \core_course_category::user_top();
         if ($coursecat) {
+            // Request a course button.
             $category = \core_course_category::get_nearest_editable_subcategory($coursecat, ['moodle/course:request']);
             if ($category && $category->can_request_course()) {
-                // Add Request a course button.
-                $button = new \single_button(
+                $requestbutton = new \single_button(
                     new \moodle_url('/course/request.php', ['category' => $category->id]),
                     get_string('requestcourse'),
                     'post',
                     \single_button::BUTTON_PRIMARY
                 );
+                $buttons[] = $requestbutton->export_for_template($output);
                 return $this->generate_zero_state_data(
                     $nocoursesimg,
-                    [$button],
-                    ['title' => 'zero_request_title', 'intro' => 'zero_request_intro']
+                    $buttons,
+                    [
+                        'title' => 'zero_request_title',
+                        'intro' => ($CFG->coursecreationguide ? 'zero_request_intro' : 'zero_nocourses_intro'),
+                    ],
                 );
             }
 
             $totalcourses = $DB->count_records_select('course', 'category > 0');
-            if (!$totalcourses && ($category = \core_course_category::get_nearest_editable_subcategory($coursecat, ['create']))) {
-                // Add Quickstart guide and Create course buttons.
-                $quickstarturl = $CFG->coursecreationguide;
-                if ($quickstarturl) {
-                    $quickstartbutton = new \single_button(
-                        new \moodle_url($quickstarturl, ['lang' => current_language()]),
-                        get_string('viewquickstart', 'block_myoverview'),
-                    );
-                    $buttons = [$quickstartbutton->export_for_template($output)];
+            if ($coursecat) {
+                // Manage courses or categories button.
+                $managebuttonname = get_string('managecategories');
+                if ($totalcourses) {
+                    $managebuttonname = get_string('managecourses');
                 }
+                if ($categorytomanage = \core_course_category::get_nearest_editable_subcategory($coursecat, ['manage'])) {
+                    $managebutton = new \single_button(
+                        new \moodle_url('/course/management.php', ['category' => $categorytomanage->id]),
+                        $managebuttonname,
+                    );
+                    $buttons[] = $managebutton->export_for_template($output);
+                }
+            }
 
+            // Create course button.
+            if ($category = \core_course_category::get_nearest_editable_subcategory($coursecat, ['create'])) {
                 $createbutton = new \single_button(
                     new \moodle_url('/course/edit.php', ['category' => $category->id]),
                     get_string('createcourse', 'block_myoverview'),
                     'post',
-                    \single_button::BUTTON_PRIMARY
+                    \single_button::BUTTON_PRIMARY,
                 );
                 $buttons[] = $createbutton->export_for_template($output);
+
+                $title = $totalcourses ? 'zero_default_title' : 'zero_nocourses_title';
+                $intro = $totalcourses ? 'zero_default_intro' :
+                        ($CFG->coursecreationguide ? 'zero_request_intro' : 'zero_nocourses_intro');
                 return $this->generate_zero_state_data(
                     $nocoursesimg,
                     $buttons,
-                    ['title' => 'zero_nocourses_title', 'intro' => 'zero_nocourses_intro']
+                    ['title' => $title, 'intro' => $intro],
                 );
             }
 
-            if ($categorytocreate = \core_course_category::get_nearest_editable_subcategory($coursecat, ['create'])) {
-                $createbutton = new \single_button(
-                    new \moodle_url('/course/edit.php', ['category' => $categorytocreate->id]),
-                    get_string('createcourse', 'block_myoverview'),
-                    'post',
-                    \single_button::BUTTON_PRIMARY
-                );
-                $buttons = [$createbutton->export_for_template($output)];
-                if ($categorytomanage = \core_course_category::get_nearest_editable_subcategory($coursecat, ['manage'])) {
-                    // Add a Manage course button.
-                    $managebutton = new \single_button(
-                        new \moodle_url('/course/management.php', ['category' => $categorytomanage->id]),
-                        get_string('managecourses')
-                    );
-                    $buttons[] = $managebutton->export_for_template($output);
-                    return $this->generate_zero_state_data(
-                        $nocoursesimg,
-                        array_reverse($buttons),
-                        ['title' => 'zero_default_title', 'intro' => 'zero_default_intro']
-                    );
-                }
-                return $this->generate_zero_state_data(
-                    $nocoursesimg,
-                    $buttons,
-                    ['title' => 'zero_default_title', 'intro' => 'zero_default_intro']
-                );
-            }
         }
 
         return $this->generate_zero_state_data(
             $nocoursesimg,
-            [],
+            $buttons,
             ['title' => 'zero_default_title', 'intro' => 'zero_default_intro']
         );
     }
@@ -580,7 +575,7 @@ class main implements renderable, templatable {
      * Generate the state zero data.
      *
      * @param \moodle_url $imageurl The URL to the image to show
-     * @param \single_button[] $buttons
+     * @param string[] $buttons Exported {@see \single_button} instances
      * @param array $strings Title and intro strings for the zero state if needed.
      * @return array Context variables for the template
      */
@@ -588,15 +583,20 @@ class main implements renderable, templatable {
         global $CFG;
         // Documentation data.
         $dochref = new \moodle_url($CFG->docroot, ['lang' => current_language()]);
-        $quickstart = new \moodle_url($CFG->coursecreationguide, ['lang' => current_language()]);
         $docparams = [
-            'quickhref' => $quickstart->out(),
-            'quicktitle' => get_string('viewquickstart', 'block_myoverview'),
-            'quicktarget' => '_blank',
             'dochref' => $dochref->out(),
             'doctitle' => get_string('documentation'),
             'doctarget' => $CFG->doctonewwindow ? '_blank' : '_self',
         ];
+        if ($CFG->coursecreationguide) {
+            // Add quickstart guide link.
+            $quickstart = new \moodle_url($CFG->coursecreationguide, ['lang' => current_language()]);
+            $docparams = [
+                'quickhref' => $quickstart->out(),
+                'quicktitle' => get_string('viewquickstart', 'block_myoverview'),
+                'quicktarget' => '_blank',
+            ];
+        }
         return [
             'nocoursesimg' => $imageurl->out(),
             'title' => ($strings['title']) ? get_string($strings['title'], 'block_myoverview') : '',

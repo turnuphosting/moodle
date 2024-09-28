@@ -30,7 +30,7 @@ require_once($CFG->dirroot . '/mod/quiz/report/reportlib.php');
  * @license   http://www.gnu.org/copyleft/gpl.html GNU Public License
  */
 class reportlib_test extends \advanced_testcase {
-    public function test_quiz_report_index_by_keys() {
+    public function test_quiz_report_index_by_keys(): void {
         $datum = [];
         $object = new \stdClass();
         $object->qid = 3;
@@ -54,7 +54,7 @@ class reportlib_test extends \advanced_testcase {
         $this->assertEquals($indexed[101][3][0]->grade, 3);
     }
 
-    public function test_quiz_report_scale_summarks_as_percentage() {
+    public function test_quiz_report_scale_summarks_as_percentage(): void {
         $quiz = new \stdClass();
         $quiz->sumgrades = 10;
         $quiz->decimalpoints = 2;
@@ -67,20 +67,20 @@ class reportlib_test extends \advanced_testcase {
             quiz_report_scale_summarks_as_percentage('-', $quiz, true));
     }
 
-    public function test_quiz_report_qm_filter_select_only_one_attempt_allowed() {
+    public function test_quiz_report_qm_filter_select_only_one_attempt_allowed(): void {
         $quiz = new \stdClass();
         $quiz->attempts = 1;
         $this->assertSame('', quiz_report_qm_filter_select($quiz));
     }
 
-    public function test_quiz_report_qm_filter_select_average() {
+    public function test_quiz_report_qm_filter_select_average(): void {
         $quiz = new \stdClass();
         $quiz->attempts = 10;
         $quiz->grademethod = QUIZ_GRADEAVERAGE;
         $this->assertSame('', quiz_report_qm_filter_select($quiz));
     }
 
-    public function test_quiz_report_qm_filter_select_first_last_best() {
+    public function test_quiz_report_qm_filter_select_first_last_best(): void {
         global $DB;
         $this->resetAfterTest();
 
@@ -157,5 +157,38 @@ class reportlib_test extends \advanced_testcase {
         $this->assertEquals(1, count($bestattempt));
         $bestattempt = reset($bestattempt);
         $this->assertEquals(2, $bestattempt->attempt);
+    }
+
+    public function test_quiz_results_never_below_zero(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $quizid = 7;
+        $fakegrade = new \stdClass();
+        $fakegrade->quiz = $quizid;
+
+        // Have 5 test grades.
+        $fakegrade->userid = 10;
+        $fakegrade->grade = 6.66667;
+        $DB->insert_record('quiz_grades', $fakegrade);
+
+        $fakegrade->userid = 11;
+        $fakegrade->grade = -2.86;
+        $DB->insert_record('quiz_grades', $fakegrade);
+
+        $fakegrade->userid = 12;
+        $fakegrade->grade = 10.0;
+        $DB->insert_record('quiz_grades', $fakegrade);
+
+        $fakegrade->userid = 13;
+        $fakegrade->grade = -5.0;
+        $DB->insert_record('quiz_grades', $fakegrade);
+
+        $fakegrade->userid = 14;
+        $fakegrade->grade = 33.33333;
+        $DB->insert_record('quiz_grades', $fakegrade);
+
+        $data = quiz_report_grade_bands(5, 20, $quizid);
+        $this->assertGreaterThanOrEqual(0, min(array_keys($data)));
     }
 }

@@ -82,7 +82,15 @@ class get extends external_api {
                         new external_value(PARAM_RAW, 'Filter value'),
                         'The value to filter on',
                         VALUE_REQUIRED
-                    )
+                    ),
+                    'filteroptions' => new external_multiple_structure(
+                        new external_single_structure([
+                            'name' => new external_value(PARAM_ALPHANUM, 'Name of the filter option', VALUE_REQUIRED),
+                            'value' => new external_value(PARAM_RAW, 'Value of the filter option', VALUE_REQUIRED),
+                        ]),
+                        'Additional options for this filter',
+                        VALUE_OPTIONAL,
+                    ),
                 ]),
                 'The filters that will be applied in the request',
                 VALUE_OPTIONAL
@@ -216,9 +224,13 @@ class get extends external_api {
             );
         }
 
+        /** @var \core_table\dynamic $instance */
         $instance = new $tableclass($uniqueid);
         $instance->set_filterset($filterset);
         self::validate_context($instance->get_context());
+        if (!$instance->has_capability()) {
+            throw new \moodle_exception('nopermissiontoaccesspage');
+        }
 
         $instance->set_sortdata($sortdata);
         $alphabet = get_string('alphabet', 'langconfig');

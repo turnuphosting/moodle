@@ -34,6 +34,7 @@ class util_test extends \advanced_testcase {
      */
     public function setUp(): void {
         global $DB;
+        parent::setUp();
 
         $this->db = $DB;
         external_settings::reset();
@@ -63,6 +64,7 @@ class util_test extends \advanced_testcase {
             $DB = $this->db;
         }
         external_settings::reset();
+        parent::tearDown();
     }
 
     /**
@@ -199,6 +201,7 @@ class util_test extends \advanced_testcase {
             'filesize' => $filesize,
             'mimetype' => 'text/plain',
             'isexternalfile' => false,
+            'icon' => 'f/text',
         ],
         ];
         // Get all the files for the area.

@@ -36,6 +36,10 @@ class history_action extends question_action_base {
         $this->strpreview = get_string('history_action', 'qbank_history');
     }
 
+    public function get_menu_position(): int {
+        return 500;
+    }
+
     protected function get_url_icon_and_label(\stdClass $question): array {
         if (!\question_bank::is_qtype_installed($question->qtype)) {
             // It sometimes happens that people end up with junk questions
@@ -45,8 +49,12 @@ class history_action extends question_action_base {
         }
 
         if (question_has_capability_on($question, 'use')) {
-            $url = helper::question_history_url($question->questionbankentryid, $this->qbank->returnurl,
-                                                                    $this->qbank->course->id);
+            $url = helper::question_history_url(
+                $question->questionbankentryid,
+                $this->qbank->returnurl,
+                $this->qbank->course->id,
+                $this->qbank->base_url()->param('filter'),
+            );
             return [$url, 't/log', $this->strpreview];
         }
 

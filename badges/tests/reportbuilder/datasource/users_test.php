@@ -92,6 +92,9 @@ class users_test extends core_reportbuilder_testcase {
         $course = $this->getDataGenerator()->create_course();
         $user = $this->getDataGenerator()->create_and_enrol($course, 'student', ['firstname' => 'Zoe', 'lastname' => 'Zebra']);
 
+        $cohort = $this->getDataGenerator()->create_cohort(['name' => 'My cohort']);
+        cohort_add_member($cohort->id, $user->id);
+
         /** @var core_badges_generator $generator */
         $generator = $this->getDataGenerator()->get_plugin_generator('core_badges');
 
@@ -122,6 +125,7 @@ class users_test extends core_reportbuilder_testcase {
         $generator->create_column(['reportid' => $report->get('id'), 'uniqueidentifier' => 'user:fullname', 'sortenabled' => 1]);
         $generator->create_column(['reportid' => $report->get('id'), 'uniqueidentifier' => 'badge:name', 'sortenabled' => 1]);
 
+        $generator->create_column(['reportid' => $report->get('id'), 'uniqueidentifier' => 'badge:namewithlink']);
         $generator->create_column(['reportid' => $report->get('id'), 'uniqueidentifier' => 'badge:criteria']);
         $generator->create_column(['reportid' => $report->get('id'), 'uniqueidentifier' => 'badge:image']);
         $generator->create_column(['reportid' => $report->get('id'), 'uniqueidentifier' => 'badge:language']);
@@ -136,14 +140,17 @@ class users_test extends core_reportbuilder_testcase {
 
         $generator->create_column(['reportid' => $report->get('id'), 'uniqueidentifier' => 'course:fullname']);
 
+        $generator->create_column(['reportid' => $report->get('id'), 'uniqueidentifier' => 'cohort:name']);
+
         $content = $this->get_custom_report_content($report->get('id'));
         $this->assertCount(3, $content);
 
         // Admin user, no badge issued.
-        [$fullname, $badgename, $criteria, $image, $language, $version, $status, $expiry, $tag, $expires, $visible, $coursename]
-            = array_values($content[0]);
+        [$fullname, $badgename, $namewithlink, $criteria, $image, $language, $version, $status, $expiry, $tag, $expires,
+            $visible, $coursename, $cohortname] = array_values($content[0]);
         $this->assertEquals('Admin User', $fullname);
         $this->assertEmpty($badgename);
+        $this->assertEmpty($namewithlink);
         $this->assertEmpty($criteria);
         $this->assertEmpty($image);
         $this->assertEmpty($language);
@@ -154,12 +161,17 @@ class users_test extends core_reportbuilder_testcase {
         $this->assertEmpty($expires);
         $this->assertEmpty($visible);
         $this->assertEmpty($coursename);
+        $this->assertEmpty($cohortname);
+
+        $expectedbadgesitelink = \html_writer::link(new \moodle_url('/badges/overview.php',
+            ['id' => $badgesite->id]), ($badgesite->name));
 
         // User issued site badge.
-        [$fullname, $badgename, $criteria, $image, $language, $version, $status, $expiry, $tag, $expires, $visible, $coursename]
-            = array_values($content[1]);
+        [$fullname, $badgename, $namewithlink, $criteria, $image, $language, $version, $status, $expiry, $tag, $expires,
+            $visible, $coursename, $cohortname] = array_values($content[1]);
         $this->assertEquals(fullname($user), $fullname);
         $this->assertEquals($badgesite->name, $badgename);
+        $this->assertEquals($expectedbadgesitelink, $namewithlink);
         $this->assertStringContainsString('Awarded by: Manager', $criteria);
         $this->assertStringContainsString('Image caption', $image);
         $this->assertEquals('German', $language);
@@ -170,12 +182,17 @@ class users_test extends core_reportbuilder_testcase {
         $this->assertNotEmpty($expires);
         $this->assertEquals('Yes', $visible);
         $this->assertEquals('PHPUnit test site', $coursename);
+        $this->assertEquals($cohort->name, $cohortname);
 
-        // User issued site badge.
-        [$fullname, $badgename, $criteria, $image, $language, $version, $status, $expiry, $tag, $expires, $visible, $coursename]
-            = array_values($content[2]);
+        $expectedbadgecourselink = \html_writer::link(new \moodle_url('/badges/overview.php',
+            ['id' => $badgecourse->id]), ($badgecourse->name));
+
+        // User issued course badge.
+        [$fullname, $badgename, $namewithlink, $criteria, $image, $language, $version, $status, $expiry, $tag, $expires,
+            $visible, $coursename, $cohortname] = array_values($content[2]);
         $this->assertEquals(fullname($user), $fullname);
         $this->assertEquals($badgecourse->name, $badgename);
+        $this->assertEquals($expectedbadgecourselink, $namewithlink);
         $this->assertEquals('Criteria for this badge have not been set up yet.', $criteria);
         $this->assertStringContainsString('Image caption', $image);
         $this->assertEquals('English', $language);
@@ -186,6 +203,7 @@ class users_test extends core_reportbuilder_testcase {
         $this->assertEmpty($expires);
         $this->assertEquals('Yes', $visible);
         $this->assertEquals($course->fullname, $coursename);
+        $this->assertEquals($cohort->name, $cohortname);
     }
 
     /**
@@ -273,6 +291,16 @@ class users_test extends core_reportbuilder_testcase {
                 'course:fullname_operator' => text::IS_EQUAL_TO,
                 'course:fullname_value' => 'Course 2',
             ], false],
+
+            // Cohort.
+            'Filter cohort name' => ['cohort:name', [
+                'cohort:name_operator' => text::IS_EQUAL_TO,
+                'cohort:name_value' => 'My cohort',
+            ], true],
+            'Filter cohort name (no match)' => ['cohort:name', [
+                'cohort:name_operator' => text::IS_EQUAL_TO,
+                'cohort:name_value' => 'Not my cohort',
+            ], false],
         ];
     }
 
@@ -290,6 +318,9 @@ class users_test extends core_reportbuilder_testcase {
 
         $course = $this->getDataGenerator()->create_course(['fullname' => 'Course 1']);
         $user = $this->getDataGenerator()->create_and_enrol($course, 'student', ['firstname' => 'Zoe', 'lastname' => 'Zebra']);
+
+        $cohort = $this->getDataGenerator()->create_cohort(['name' => 'My cohort']);
+        cohort_add_member($cohort->id, $user->id);
 
         /** @var core_badges_generator $generator */
         $generator = $this->getDataGenerator()->get_plugin_generator('core_badges');

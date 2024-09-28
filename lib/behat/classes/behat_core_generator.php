@@ -290,7 +290,7 @@ class behat_core_generator extends behat_generator_base {
             'user private files' => [
                 'singular' => 'user private file',
                 'datagenerator' => 'user_private_files',
-                'required' => ['user', 'filepath', 'filename'],
+                'required' => ['user', 'filepath'],
                 'switchids' => ['user' => 'userid']
             ],
             'badge external backpacks' => [
@@ -315,6 +315,11 @@ class behat_core_generator extends behat_generator_base {
                 'datagenerator' => 'notification',
                 'required' => ['subject', 'userfrom', 'userto'],
                 'switchids' => ['userfrom' => 'userfromid', 'userto' => 'usertoid'],
+            ],
+            'stored progress bars' => [
+                'singular' => 'stored progress bar',
+                'datagenerator' => 'stored_progress_bar',
+                'required' => ['idnumber'],
             ],
         ];
 
@@ -470,13 +475,7 @@ class behat_core_generator extends behat_generator_base {
             }
         }
 
-        // Custom exception.
-        try {
-            $this->datagenerator->create_module($activityname, $data, $cmoptions);
-        } catch (coding_exception $e) {
-            throw new Exception('\'' . $activityname . '\' activity can not be added using this step,' .
-                    ' use the step \'I add a "ACTIVITY_OR_RESOURCE_NAME_STRING" to section "SECTION_NUMBER"\' instead');
-        }
+        $this->datagenerator->create_module($activityname, $data, $cmoptions);
     }
 
     /**
@@ -1058,15 +1057,15 @@ class behat_core_generator extends behat_generator_base {
             if (!empty($data['filepath'])) {
                 $filename = basename($data['filepath']);
                 $fs = get_file_storage();
-                $filerecord = array(
+                $filerecord = [
                     'component' => 'contentbank',
                     'filearea' => 'public',
                     'contextid' => $context->id,
                     'userid' => $data['userid'],
                     'itemid' => $content->get_id(),
                     'filename' => $filename,
-                    'filepath' => '/'
-                );
+                    'filepath' => '/',
+                ];
                 $fs->create_file_from_pathname($filerecord, $CFG->dirroot . $data['filepath']);
             }
         } else {

@@ -528,7 +528,7 @@ trait behat_session_trait {
      * @return boolean
      */
     protected static function running_javascript_in_session(Session $session): bool {
-        return get_class($session->getDriver()) !== 'Behat\Mink\Driver\GoutteDriver';
+        return get_class($session->getDriver()) !== 'Behat\Mink\Driver\BrowserKitDriver';
     }
 
     /**
@@ -555,7 +555,7 @@ trait behat_session_trait {
      *
      * @return bool True if it's in the app
      */
-    protected function is_in_app() : bool {
+    protected function is_in_app(): bool {
         // Cannot be in the app if there's no @app tag on scenario.
         if (!$this->has_tag('app')) {
             return false;
@@ -645,7 +645,6 @@ trait behat_session_trait {
      * @return void Throws an exception if it times out without the element being visible
      */
     protected function ensure_node_is_visible($node) {
-
         if (!$this->running_javascript()) {
             return;
         }
@@ -715,7 +714,6 @@ trait behat_session_trait {
      * @return NodeElement Throws an exception if it times out without being visible
      */
     protected function ensure_element_is_visible($element, $selectortype) {
-
         if (!$this->running_javascript()) {
             return;
         }
@@ -732,7 +730,7 @@ trait behat_session_trait {
      * @param string $tag Tag to check
      * @return bool True if the tag exists in scenario or feature
      */
-    public function has_tag(string $tag) : bool {
+    public function has_tag(string $tag): bool {
         return array_key_exists($tag, behat_hooks::get_tags_for_scenario());
     }
 
@@ -746,9 +744,14 @@ trait behat_session_trait {
      *
      * @param string $windowsize size of window.
      * @param bool $viewport If true, changes viewport rather than window size
+     * @param bool $scalesize Whether to scale the size by the WINDOWSCALE environment variable
      * @throws ExpectationException
      */
-    protected function resize_window($windowsize, $viewport = false) {
+    protected function resize_window(
+        string $windowsize,
+        bool $viewport = false,
+        bool $scalesize = true,
+    ): void {
         global $CFG;
 
         // Non JS don't support resize window.
@@ -790,6 +793,16 @@ trait behat_session_trait {
         if (isset($CFG->behat_window_size_modifier) && is_numeric($CFG->behat_window_size_modifier)) {
             $width *= $CFG->behat_window_size_modifier;
             $height *= $CFG->behat_window_size_modifier;
+        }
+
+        if ($scalesize) {
+            // Scale the window size by the WINDOWSCALE environment variable.
+            // This is intended to be used for Behat reruns to negate the impact of browser window size issues.
+            // This allows a per-run, runtime configuration of the scaling, unlike behat_window_size_modifier which
+            // typically applies to all runs.
+            $scalefactor = getenv('WINDOWSCALE') ? floatval(getenv('WINDOWSCALE')) : 1;
+            $width *= $scalefactor;
+            $height *= $scalefactor;
         }
 
         if ($viewport) {
@@ -1008,6 +1021,68 @@ EOF;
     }
 
     /**
+     * Internal step definition to find deprecated styles.
+     *
+     * Part of behat_hooks class as is part of the testing framework, is auto-executed
+     * after each step so no features will splicitly use it.
+     *
+     * @throws Exception Unknown type, depending on what we caught in the hook or basic \Exception.
+     * @see Moodle\BehatExtension\Tester\MoodleStepTester
+     */
+    public function look_for_deprecated_styles() {
+        if (!behat_config_manager::get_behat_run_config_value('scss-deprecations')) {
+            return;
+        }
+
+        if (!$this->running_javascript()) {
+            return;
+        }
+
+        // Look for any DOM element with deprecated message in before pseudo-element.
+        $js = <<<EOF
+            [...document.querySelectorAll('*')].some(
+                el => window.getComputedStyle(el, ':before').content === '"Deprecated style in use"'
+            );
+        EOF;
+        if ($this->evaluate_script($js)) {
+            throw new \Exception(html_entity_decode("Deprecated style in use", ENT_COMPAT));
+        }
+    }
+
+
+    /**
+     * Internal step definition to find deprecated icons.
+     *
+     * Part of behat_hooks class as is part of the testing framework, is auto-executed
+     * after each step so no features will splicitly use it.
+     *
+     * @throws Exception Unknown type, depending on what we caught in the hook or basic \Exception.
+     * @see Moodle\BehatExtension\Tester\MoodleStepTester
+     */
+    public function look_for_deprecated_icons() {
+        if (behat_config_manager::get_behat_run_config_value('no-icon-deprecations')) {
+            return;
+        }
+
+        if (!$this->running_javascript()) {
+            return;
+        }
+
+        // Look for any DOM element with deprecated icon.
+        $js = <<<EOF
+            [...document.querySelectorAll('.icon.deprecated')].some(
+                deprecatedicon => true
+            );
+        EOF;
+        if ($this->evaluate_script($js)) {
+            throw new \Exception(html_entity_decode(
+                "Deprecated icon in use. Enable \$CFG->debugdisplay for detailed debugging information in the console",
+                ENT_COMPAT,
+            ));
+        }
+    }
+
+    /**
      * Converts HTML tags to line breaks to display the info in CLI
      *
      * @param string $html
@@ -1045,6 +1120,12 @@ EOF;
 
         // Look for exceptions.
         $this->look_for_exceptions();
+
+        // Look for deprecated styles.
+        $this->look_for_deprecated_styles();
+
+        // Look for deprecated icons.
+        $this->look_for_deprecated_icons();
     }
 
     /**
@@ -1082,11 +1163,11 @@ EOF;
         if (empty($sid)) {
             throw new coding_exception('failed to get moodle session');
         }
-        $userid = $DB->get_field('sessions', 'userid', ['sid' => $sid]);
-        if (empty($userid)) {
-            throw new coding_exception('failed to get user from seession id '.$sid);
+        $session = \core\session\manager::get_session_by_sid($sid);
+        if (empty($session->userid)) {
+            throw new coding_exception('failed to get user from session id: '.$sid);
         }
-        return $DB->get_record('user', ['id' => $userid]);
+        return $DB->get_record('user', ['id' => $session->userid]);
     }
 
     /**
@@ -1263,7 +1344,7 @@ EOF;
      * @param int $timeout One of the TIMEOUT constants
      * @return int Actual timeout (in seconds)
      */
-    protected static function get_real_timeout(int $timeout) : int {
+    protected static function get_real_timeout(int $timeout): int {
         global $CFG;
         if (!empty($CFG->behat_increasetimeout)) {
             return $timeout * $CFG->behat_increasetimeout;
@@ -1279,7 +1360,7 @@ EOF;
      *
      * @return int Timeout in seconds
      */
-    public static function get_timeout() : int {
+    public static function get_timeout(): int {
         return self::get_real_timeout(6);
     }
 
@@ -1292,7 +1373,7 @@ EOF;
      *
      * @return int Timeout in seconds
      */
-    public static function get_reduced_timeout() : int {
+    public static function get_reduced_timeout(): int {
         return self::get_real_timeout(2);
     }
 
@@ -1303,7 +1384,7 @@ EOF;
      *
      * @return int Timeout in seconds
      */
-    public static function get_extended_timeout() : int {
+    public static function get_extended_timeout(): int {
         return self::get_real_timeout(10);
     }
 

@@ -16,8 +16,11 @@
 
 namespace core_communication;
 
+use communication_matrix\matrix_test_helper_trait;
+
 defined('MOODLE_INTERNAL') || die();
 
+require_once(__DIR__ . '/../provider/matrix/tests/matrix_test_helper_trait.php');
 require_once(__DIR__ . '/communication_test_helper_trait.php');
 
 /**
@@ -30,29 +33,40 @@ require_once(__DIR__ . '/communication_test_helper_trait.php');
  * @coversDefaultClass \core_communication\processor
  */
 class processor_test extends \advanced_testcase {
-
+    use matrix_test_helper_trait;
     use communication_test_helper_trait;
+
+    public function setUp(): void {
+        parent::setUp();
+        $this->resetAfterTest();
+        $this->setup_communication_configs();
+        $this->initialise_mock_server();
+    }
 
     /**
      * Test create instance.
      *
      * @covers ::create_instance
      * @covers ::get_id
-     * @covers ::get_instance
+     * @covers ::get_context
+     * @covers ::get_context_id
+     * @covers ::get_provider
      * @covers ::get_room_name
      */
     public function test_create_instance(): void {
         global $DB;
         $this->resetAfterTest();
 
-        // Sameple test data.
+        // Sample test data.
         $instanceid = 10;
-        $component = 'core_course';
-        $instancetype = 'coursecommunication';
+        $context = \core\context\system::instance();
+        $component = 'core';
+        $instancetype = 'mycommunication';
         $selectedcommunication = 'communication_matrix';
         $communicationroomname = 'communicationroom';
 
         $communicationprocessor = processor::create_instance(
+            $context,
             $selectedcommunication,
             $instanceid,
             $component,
@@ -61,11 +75,14 @@ class processor_test extends \advanced_testcase {
         );
 
         // Now test the record against the database.
-        $communicationrecord = $DB->get_record('communication',
-            ['instanceid' => $instanceid, 'component' => $component, 'instancetype' => $instancetype]);
+        $communicationrecord = $DB->get_record(
+            'communication',
+            ['instanceid' => $instanceid, 'component' => $component, 'instancetype' => $instancetype]
+        );
 
         // Test against the set data.
         $this->assertNotEmpty($communicationrecord);
+        $this->assertEquals($context->id, $communicationrecord->contextid);
         $this->assertEquals($instanceid, $communicationrecord->instanceid);
         $this->assertEquals($component, $communicationrecord->component);
         $this->assertEquals($selectedcommunication, $communicationrecord->provider);
@@ -73,6 +90,8 @@ class processor_test extends \advanced_testcase {
         $this->assertEquals($instancetype, $communicationrecord->instancetype);
 
         // Test against the object.
+        $this->assertEquals($context->id, $communicationprocessor->get_context_id());
+        $this->assertEquals($context, $communicationprocessor->get_context());
         $this->assertEquals($communicationprocessor->get_id(), $communicationrecord->id);
         $this->assertEquals($communicationprocessor->get_provider(), $communicationrecord->provider);
         $this->assertEquals($communicationprocessor->get_room_name(), $communicationrecord->roomname);
@@ -92,12 +111,14 @@ class processor_test extends \advanced_testcase {
 
         // Sameple test data.
         $instanceid = 10;
-        $component = 'core_course';
-        $instancetype = 'coursecommunication';
+        $context = \core\context\system::instance();
+        $component = 'core';
+        $instancetype = 'mycommunication';
         $selectedcommunication = 'communication_matrix';
         $communicationroomname = 'communicationroom';
 
         $communicationprocessor = processor::create_instance(
+            $context,
             $selectedcommunication,
             $instanceid,
             $component,
@@ -108,17 +129,18 @@ class processor_test extends \advanced_testcase {
         $selectedcommunication = 'none';
         $communicationroomname = 'communicationroomedited';
 
-        $communicationprocessor->update_instance($selectedcommunication, $communicationroomname);
+        $communicationprocessor->update_instance(processor::PROVIDER_INACTIVE, $communicationroomname);
 
         // Now test the record against the database.
         $communicationrecord = $DB->get_record('communication', [
             'instanceid' => $instanceid,
             'component' => $component,
-            'instancetype' => $instancetype
+            'instancetype' => $instancetype,
         ]);
 
         // Test against the set data.
         $this->assertNotEmpty($communicationrecord);
+        $this->assertEquals($context->id, $communicationrecord->contextid);
         $this->assertEquals($instanceid, $communicationrecord->instanceid);
         $this->assertEquals($component, $communicationrecord->component);
         $this->assertEquals(processor::PROVIDER_INACTIVE, $communicationrecord->active);
@@ -126,6 +148,8 @@ class processor_test extends \advanced_testcase {
         $this->assertEquals($instancetype, $communicationrecord->instancetype);
 
         // Test against the object.
+        $this->assertEquals($context->id, $communicationprocessor->get_context_id());
+        $this->assertEquals($context, $communicationprocessor->get_context());
         $this->assertEquals($communicationprocessor->get_id(), $communicationrecord->id);
         $this->assertEquals($communicationprocessor->is_instance_active(), $communicationrecord->active);
         $this->assertEquals($communicationprocessor->get_room_name(), $communicationrecord->roomname);
@@ -144,12 +168,14 @@ class processor_test extends \advanced_testcase {
 
         // Sameple test data.
         $instanceid = 10;
-        $component = 'core_course';
-        $instancetype = 'coursecommunication';
+        $context = \core\context\system::instance();
+        $component = 'core';
+        $instancetype = 'mycommunication';
         $selectedcommunication = 'communication_matrix';
         $communicationroomname = 'communicationroom';
 
         $communicationprocessor = processor::create_instance(
+            $context,
             $selectedcommunication,
             $instanceid,
             $component,
@@ -163,7 +189,7 @@ class processor_test extends \advanced_testcase {
         $communicationrecord = $DB->get_record('communication', [
             'instanceid' => $instanceid,
             'component' => $component,
-            'instancetype' => $instancetype
+            'instancetype' => $instancetype,
         ]);
 
         // Test against the set data.
@@ -171,9 +197,11 @@ class processor_test extends \advanced_testcase {
 
         // Test against the object.
         $communicationprocessor = processor::load_by_instance(
-            $component,
-            $instancetype,
-            $instanceid);
+            context: $context,
+            component: $component,
+            instancetype: $instancetype,
+            instanceid: $instanceid,
+        );
         $this->assertNull($communicationprocessor);
     }
 
@@ -186,12 +214,14 @@ class processor_test extends \advanced_testcase {
     public function test_load_by_instance(): void {
         $this->resetAfterTest();
         $course = $this->get_course();
+        $context = \core\context\course::instance($course->id);
 
         // Test the communication record exists.
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: $context,
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
         $this->assertNotNull($communicationprocessor);
@@ -211,12 +241,14 @@ class processor_test extends \advanced_testcase {
     public function test_load_by_id(): void {
         $this->resetAfterTest();
         $course = $this->get_course();
+        $context = \core\context\course::instance($course->id);
 
         // Test the communication record exists.
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: $context,
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
         $communicationprocessorbyid = processor::load_by_id($communicationprocessor->get_id());
@@ -237,12 +269,14 @@ class processor_test extends \advanced_testcase {
     public function test_get_component(): void {
         $this->resetAfterTest();
         $course = $this->get_course();
+        $context = \core\context\course::instance($course->id);
 
         // Test the communication record exists.
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: $context,
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
         $this->assertEquals('core_course', $communicationprocessor->get_component());
@@ -257,12 +291,37 @@ class processor_test extends \advanced_testcase {
     public function test_get_provider(): void {
         $this->resetAfterTest();
         $course = $this->get_course();
+        $context = \core\context\course::instance($course->id);
 
-        // Test the communication record exists.
+        // Test the communication record exists when fetching the active provider.
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: $context,
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
+        );
+
+        $this->assertEquals('communication_matrix', $communicationprocessor->get_provider());
+
+        // Test the communication record exists when specifying the provider.
+        $communicationprocessor = processor::load_by_instance(
+            context: $context,
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
+            provider: 'communication_matrix',
+        );
+
+        $this->assertEquals('communication_matrix', $communicationprocessor->get_provider());
+
+        // Test the communication record exists when the provider is not active.
+        $communicationprocessor->update_instance(processor::PROVIDER_INACTIVE);
+        $communicationprocessor = processor::load_by_instance(
+            context: $context,
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
+            provider: 'communication_matrix',
         );
 
         $this->assertEquals('communication_matrix', $communicationprocessor->get_provider());
@@ -277,12 +336,14 @@ class processor_test extends \advanced_testcase {
     public function test_get_room_name(): void {
         $this->resetAfterTest();
         $course = $this->get_course();
+        $context = \core\context\course::instance($course->id);
 
         // Test the communication record exists.
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: $context,
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
         $this->assertEquals('Sampleroom', $communicationprocessor->get_room_name());
@@ -299,12 +360,14 @@ class processor_test extends \advanced_testcase {
     public function test_get_room_provider(): void {
         $this->resetAfterTest();
         $course = $this->get_course();
+        $context = \core\context\course::instance($course->id);
 
         // Test the communication record exists.
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: $context,
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
         $this->assertInstanceOf(room_chat_provider::class, $communicationprocessor->get_room_provider());
@@ -321,12 +384,14 @@ class processor_test extends \advanced_testcase {
     public function test_get_user_provider(): void {
         $this->resetAfterTest();
         $course = $this->get_course();
+        $context = \core\context\course::instance($course->id);
 
         // Test the communication record exists.
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: $context,
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
         $this->assertInstanceOf(user_provider::class, $communicationprocessor->get_room_provider());
@@ -345,12 +410,14 @@ class processor_test extends \advanced_testcase {
     public function test_get_room_user_provider(): void {
         $this->resetAfterTest();
         $course = $this->get_course();
+        $context = \core\context\course::instance($course->id);
 
         // Test the communication record exists.
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: $context,
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
         $this->assertInstanceOf(room_user_provider::class, $communicationprocessor->get_room_user_provider());
@@ -367,6 +434,7 @@ class processor_test extends \advanced_testcase {
      */
     public function test_get_avatar(): void {
         $this->resetAfterTest();
+        $this->setAdminUser();
 
         global $CFG;
         $course = $this->get_course('Sampleroom', 'none');
@@ -374,19 +442,25 @@ class processor_test extends \advanced_testcase {
         // Sample data.
         $communicationroomname = 'Sampleroom';
         $selectedcommunication = 'communication_matrix';
-        $avatarurl = $CFG->dirroot . '/communication/tests/fixtures/moodle_logo.jpg';
+        $avatar = $this->create_communication_file(
+            'moodle_logo.jpg',
+            'moodle_logo.jpg',
+        );
 
         $communication = \core_communication\api::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
+            provider: $selectedcommunication,
         );
-        $communication->create_and_configure_room($selectedcommunication, $communicationroomname, $avatarurl);
+        $communication->create_and_configure_room($communicationroomname, $avatar);
 
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
         $avatar = $communicationprocessor->get_avatar();
@@ -403,25 +477,69 @@ class processor_test extends \advanced_testcase {
         $communicationprocessor->set_avatar_filename('newname.svg');
 
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
         $this->assertEquals($communicationprocessor->get_avatar_filename(), 'newname.svg');
     }
 
     /**
-     * Test if the provider is enabled or disabled.
+     * Test if the provider is enabled and configured, or disabled.
      *
-     * @covers ::is_provider_enabled
+     * @covers ::is_provider_available
      */
-    public function test_is_provider_enabled(): void {
+    public function test_is_provider_available(): void {
         $this->resetAfterTest();
         $communicationprovider = 'communication_matrix';
-        $this->assertTrue(processor::is_provider_enabled($communicationprovider));
+        $this->assertTrue(processor::is_provider_available($communicationprovider));
 
         // Now test is disabling the plugin returns false.
         set_config('disabled', 1, $communicationprovider);
-        $this->assertFalse(processor::is_provider_enabled($communicationprovider));
+        $this->assertFalse(processor::is_provider_available($communicationprovider));
+    }
+
+    /**
+     * Test delete flagged user id's return correct users.
+     *
+     * @covers ::get_all_delete_flagged_userids
+     */
+    public function test_get_all_delete_flagged_userids(): void {
+        $this->resetAfterTest();
+
+        $course = $this->get_course('Sampleroom', 'none');
+        $user1 = $this->getDataGenerator()->create_user()->id;
+        $user2 = $this->getDataGenerator()->create_user()->id;
+
+        // Sample data.
+        $communicationroomname = 'Sampleroom';
+        $selectedcommunication = 'communication_matrix';
+        $component = 'core_course';
+        $instancetype = 'coursecommunication';
+
+        // Load the communication api.
+        $communication = \core_communication\api::load_by_instance(
+            context: \core\context\course::instance($course->id),
+            component: $component,
+            instancetype: $instancetype,
+            instanceid: $course->id,
+            provider: $selectedcommunication,
+        );
+        $communication->create_and_configure_room($communicationroomname);
+        $communication->add_members_to_room([$user1, $user2]);
+
+        // Now remove user1 from the room.
+        $communication->remove_members_from_room([$user1]);
+
+        // Test against the object.
+        $communicationprocessor = processor::load_by_instance(
+            context: \core\context\course::instance($course->id),
+            component: $component,
+            instancetype: $instancetype,
+            instanceid: $course->id,
+        );
+
+        $this->assertEquals([$user1], $communicationprocessor->get_all_delete_flagged_userids());
     }
 }

@@ -1,16 +1,20 @@
-# This is a description for the TinyMCE 6 library integration with Moodle.
+# This is a description for the TinyMCE 7 library integration with Moodle.
 
 Please note that we have a clone of the official TinyMCE repository which contains the working build and branch for each release. This ensures build repeatability and gives us the ability to patch stable versions of Moodle for security fixes where relevant.
 
 Each Moodle branch has a similar branch in the https://github.com/moodlehq/tinymce.
-The Moodle `master` branch is named as the upcoming STABLE branch name, for example during the development of Moodle 4.2.0, the upcoming STABLE branch name will be MOODLE_402_STABLE.
+The Moodle `master` branch is named as the upcoming STABLE branch name, for example during the development of Moodle 4.5.0, the upcoming STABLE branch name will be MOODLE_405_STABLE.
+
+## Patches included in this release
+
+N/A
 
 ## Upgrade procedure for TinyMCE Editor
 
 1. Store an environment variable to the Tiny directory in the Moodle repository (the current directory).
 
  ```
-MOODLEDIR=`pwd`
+MOODLEDIR=`pwd`/../../
  ```
 
 2. Check out a clean copy of TinyMCE of the target version.
@@ -20,58 +24,51 @@ tinymce=`mktemp -d`
 cd "${tinymce}"
 git clone https://github.com/tinymce/tinymce.git
 cd tinymce
-git checkout -b MOODLE_402_STABLE
+git checkout -b MOODLE_405_STABLE
 git reset --hard [desired version]
  ```
 
-3. Update the typescript configuration to generate ES6 modules with ES2020 target.
-
- ```
-sed -i 's/"module".*es.*",/"module": "es6",/' tsconfig.shared.json
-sed -i 's/"target.*es.*",/"target": "es2020",/' tsconfig.shared.json
- ```
-
-4. Install dependencies
+3. Install dependencies
 
  ```
 yarn
  ```
 
-5. Check in the base changes
+4. Check in the base changes
 
  ```
 git commit -m 'MDL: Add build configuration'
  ```
 
-6. Apply any necessary security patches.
-7. Rebuild TinyMCE
+5. Apply any necessary security patches.
+6. Rebuild TinyMCE
 
  ```
 yarn
 yarn build
  ```
 
-8. Remove the old TinyMCE configuration and replace it with the newly built version.
+7. Remove the old TinyMCE configuration and replace it with the newly built version.
 
  ```
 rm -rf "${MOODLEDIR}/js"
 cp -r modules/tinymce/js "${MOODLEDIR}/js"
  ```
 
-9. Push the build to MoodleHQ for future change support
+8. Push the build to MoodleHQ for future change support
 
  ```
 # Tag the next Moodle version.
-git tag v4.2.0
+git tag v4.5.0
 git remote add moodlehq --tags
-git push moodlehq MOODLE_402_STABLE
+git push moodlehq MOODLE_405_STABLE
  ```
 
-10. Check the (Release notes)[https://www.tiny.cloud/docs/tinymce/6/release-notes/] for any new plugins, premium plugins, menu items, or buttons and add them to classes/manager.php
+9. Check the (Release notes)[https://www.tiny.cloud/docs/tinymce/7/release-notes/] for any new plugins, premium plugins, menu items, or buttons and add them to classes/manager.php
 
 ## Update procedure for included TinyMCE translations
 
-1. Visit https://www.tiny.cloud/get-tiny/language-packages/ and download the "TinyMCE 6 All languages" zip file.
+1. Visit https://www.tiny.cloud/get-tiny/language-packages/ and download the "TinyMCE 7 All languages" zip file.
 2. Check the list of languages and confirm that the German translation is still at 100%. If not, then make a note of a language which is.
 3. Unzip the translation into a new directory:
 
@@ -118,7 +115,7 @@ cat strings.php >> "${MOODLEDIR}/lang/en/editor_tiny.php"
 1. Store an environment variable to the Tiny directory in the Moodle repository (the current directory).
 
  ```
-MOODLEDIR=`pwd`
+MOODLEDIR=`pwd`../../
  ```
 
 2. Check out a clean copy of TinyMCE of the target version.
@@ -130,7 +127,7 @@ git clone https://github.com/tinymce/tinymce.git
 cd tinymce
 git remote add moodlehq https://github.com/moodlehq/tinymce
 git fetch moodlehq
-git checkout -b MOODLE_402_STABLE moodlehq/MOODLE_402_STABLE
+git checkout -b MOODLE_405_STABLE moodlehq/MOODLE_405_STABLE
  ```
 
 3. Apply any necessary security patches.

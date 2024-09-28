@@ -36,7 +36,7 @@ class choicelist_test extends advanced_testcase {
     /**
      * Test for a choice without options.
      *
-     * @covers ::_construct
+     * @covers ::__construct
      * @covers ::add_option
      * @covers ::export_for_template
      */
@@ -57,7 +57,7 @@ class choicelist_test extends advanced_testcase {
     /**
      * Test for a choice with basic options.
      *
-     * @covers ::_construct
+     * @covers ::__construct
      * @covers ::add_option
      * @covers ::export_for_template
      */
@@ -82,7 +82,7 @@ class choicelist_test extends advanced_testcase {
     /**
      * Test for a choice with extras options definition.
      *
-     * @covers ::_construct
+     * @covers ::__construct
      * @covers ::add_option
      * @covers ::set_option_extras
      * @covers ::export_for_template
@@ -118,7 +118,7 @@ class choicelist_test extends advanced_testcase {
         $this->assertEquals('Choose an option', $export['description']);
         $this->assertEquals(true, $export['hasoptions']);
         $this->assertCount(2, $export['options']);
-        $definition1['iconexport'] = $definition1['icon']->export_for_template($renderer);
+        $definition1['iconexport'] = $definition1['icon']->export_for_pix($renderer);
         $this->validate_option($export['options'][0], 'option1', 'Option 1', $definition1);
         $this->validate_option($export['options'][1], 'option2', 'Option 2', $definition2);
     }
@@ -126,7 +126,7 @@ class choicelist_test extends advanced_testcase {
     /**
      * Test for a choice with option selected.
      *
-     * @covers ::_construct
+     * @covers ::__construct
      * @covers ::add_option
      * @covers ::set_selected_value
      * @covers ::get_selected_value
@@ -191,5 +191,86 @@ class choicelist_test extends advanced_testcase {
         } else {
             $this->assertFalse(isset($option['extras']));
         }
+    }
+
+    /**
+     * Test for a choice with option selected.
+     *
+     * @covers ::__construct
+     * @covers ::add_option
+     * @covers ::set_selected_value
+     * @covers ::get_selected_value
+     * @covers ::set_allow_empty
+     * @covers ::get_allow_empty
+     * @covers ::export_for_template
+     */
+    public function test_set_allow_empty(): void {
+        $choice = new choicelist('Choose an option');
+        $choice->add_option('option1', 'Option 1');
+        $choice->add_option('option2', 'Option 2');
+
+        $choice->set_allow_empty(true);
+        $this->assertTrue($choice->get_allow_empty());
+        $this->assertNull($choice->get_selected_value());
+
+        $choice->set_allow_empty(false);
+        $this->assertFalse($choice->get_allow_empty());
+        $this->assertEquals('option1', $choice->get_selected_value());
+
+        // Validate the null selected value is not changed when allow empty is set to true.
+        $choice->set_allow_empty(true);
+        $this->assertTrue($choice->get_allow_empty());
+        $this->assertNull($choice->get_selected_value());
+
+        $choice->set_selected_value('option2');
+
+        $choice->set_allow_empty(false);
+        $this->assertFalse($choice->get_allow_empty());
+        $this->assertEquals('option2', $choice->get_selected_value());
+
+        $choice->set_allow_empty(true);
+        $this->assertTrue($choice->get_allow_empty());
+        $this->assertEquals('option2', $choice->get_selected_value());
+    }
+
+    /**
+     * Test for a choice with option selected.
+     *
+     * @covers ::get_selectable_options
+     */
+    public function test_get_selectable_options(): void {
+        $choice = new choicelist('Choose an option');
+        $choice->add_option('option1', 'Option 1');
+        $choice->add_option('option2', 'Option 2');
+        $choice->add_option('option3', 'Option 3', ['disabled' => true]);
+        $choice->add_option('option4', 'Option 4', ['disabled' => true]);
+        $choice->add_option('option5', 'Option 5');
+
+        $selectable = $choice->get_selectable_options();
+        $this->assertCount(3, $selectable);
+        $this->assertEquals('option1', $selectable[0]->value);
+        $this->assertEquals('option2', $selectable[1]->value);
+        $this->assertEquals('option5', $selectable[2]->value);
+
+        $choice->set_selected_value('option2');
+        $selectable = $choice->get_selectable_options();
+        $this->assertCount(2, $selectable);
+        $this->assertEquals('option1', $selectable[0]->value);
+        $this->assertEquals('option5', $selectable[1]->value);
+    }
+
+    /**
+     * Test for a choice with option selected.
+     *
+     * @covers ::get_option_extras
+     */
+    public function test_get_option_extras(): void {
+        $choice = new choicelist('Choose an option');
+        $choice->add_option('option1', 'Option 1');
+        $choice->add_option('option2', 'Option 2', ['extras' => ['data-attribute' => 'value2']]);
+
+        $this->assertEquals([], $choice->get_option_extras('option1'));
+        $this->assertEquals(['data-attribute' => 'value2'], $choice->get_option_extras('option2'));
+        $this->assertEquals([], $choice->get_option_extras('inexistent'));
     }
 }

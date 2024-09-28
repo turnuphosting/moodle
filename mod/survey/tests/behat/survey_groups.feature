@@ -38,6 +38,7 @@ Feature: Viewing response reports by group
       | user1      | G1    |
       | user2      | G2    |
       | user4      | G3    |
+    And I enable "survey" "mod" plugin
     And the following "activities" exist:
       | activity   | name            | intro                       | course | idnumber   | groupmode | template |
       | survey     | Separate survey | survey with separate groups | C1     | survey1    | 1         | 5        |
@@ -76,7 +77,10 @@ Feature: Viewing response reports by group
       | survey  | user       | all        | G1         | G2         | user1  | user2      | user3      | user4      |
       | survey1 | teacher1   | should     | should     | should     | should | should     | should     | should     |
       | survey1 | noneditor1 | should not | should     | should not | should | should not | should not | should not |
-      | survey1 | noneditor2 | should     | should not | should not | should | should     | should     | should     |
       | survey2 | teacher1   | should     | should     | should     | should | should     | should     | should     |
       | survey2 | noneditor1 | should     | should     | should     | should | should not | should not | should not |
       | survey2 | noneditor2 | should     | should     | should     | should | should not | should not | should not |
+
+  Scenario: Non-editing teacher without access to any groups should not see survey results in separate groups mode
+    Given I am on the "survey1" "survey activity" page logged in as "noneditor2"
+    Then I should not see "Response reports"

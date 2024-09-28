@@ -46,6 +46,7 @@ class external_api {
      * @param int $strictness IGNORE_MISSING means compatible mode, false returned if record not found, debug message if more found;
      *                        MUST_EXIST means throw exception if no record or multiple records found
      * @return \stdClass|bool description or false if not found or exception thrown
+     * @throws coding_exception for any property and/or method that is missing or invalid
      * @since Moodle 2.0
      */
     public static function external_function_info($function, $strictness = MUST_EXIST) {
@@ -67,7 +68,8 @@ class external_api {
             }
             if (!file_exists($function->classpath)) {
                 throw new coding_exception(
-                    "Cannot find file {$function->classpath} with external function implementation"
+                    "Cannot find file {$function->classpath} with external function implementation " .
+                        "for {$function->classname}::{$function->methodname}"
                 );
             }
             require_once($function->classpath);
@@ -146,7 +148,7 @@ class external_api {
             } else if (method_exists($function->classname, $function->ajax_method)) {
                 if (call_user_func([$function->classname, $function->ajax_method]) === true) {
                     debugging('External function ' . $function->ajax_method . '() function is deprecated.' .
-                              'Set ajax=>true in db/service.php instead.', DEBUG_DEVELOPER);
+                              'Set ajax=>true in db/services.php instead.', DEBUG_DEVELOPER);
                     $function->allowed_from_ajax = true;
                 }
             }

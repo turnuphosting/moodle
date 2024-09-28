@@ -192,7 +192,7 @@ class xmldb_object {
      * only lowercase a-z, 0-9 and _ are allowed
      * @return bool
      */
-    public function checkName () {
+    public function checkName() {
         $result = true;
 
         if ($this->name != preg_replace('/[^a-z0-9_ -]/i', '', $this->name)) {
@@ -416,7 +416,7 @@ class xmldb_object {
      * @param xmldb_table $xmldb_table optional when object is table
      * @return string null if ok, error message if problem found
      */
-    public function validateDefinition(xmldb_table $xmldb_table=null) {
+    public function validateDefinition(?xmldb_table $xmldb_table=null) {
         return null;
     }
 }

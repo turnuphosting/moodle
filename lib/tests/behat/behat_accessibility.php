@@ -14,15 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-/**
- * Steps definitions to open and close action menus.
- *
- * @package    core
- * @category   test
- * @copyright  2020 Andrew Nicols <andrew@nicols.co.uk>
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- */
-
 use Behat\Mink\Exception\{DriverException, ExpectationException};
 
 // NOTE: no MOODLE_INTERNAL test here, this file may be required by behat before including /config.php.
@@ -45,8 +36,7 @@ class behat_accessibility extends behat_base {
      * There are standard tags to ensure WCAG 2.1 A, WCAG 2.1 AA, and Section 508 compliance.
      * It is also possible to specify any desired optional tags.
      *
-     * The list of available tags can be found at
-     * https://github.com/dequelabs/axe-core/blob/v3.5.5/doc/rule-descriptions.md.
+     * See {@link https://github.com/dequelabs/axe-core/blob/v4.10.0/doc/rule-descriptions.md} for the list of available tags
      *
      * @Then the page should meet accessibility standards
      * @Then the page should meet accessibility standards with :extratags extra tests
@@ -190,11 +180,11 @@ EOF;
     protected function get_axe_config_for_tags(?array $standardtags = null, ?array $extratags = null): string {
         if (empty($standardtags)) {
             $standardtags = [
-                // Meet WCAG 2.1 A requirements.
-                'wcag2a',
+                // Meet WCAG 2.2 Level A success criteria.
+                'wcag22a',
 
-                // Meet WCAG 2.1 AA requirements.
-                'wcag2aa',
+                // Meet WCAG 2.2 Level AA success criteria.
+                'wcag22aa',
 
                 // Meet Section 508 requirements.
                 // See https://www.epa.gov/accessibility/what-section-508 for detail.
@@ -203,7 +193,7 @@ EOF;
                 // Ensure that ARIA attributes are correctly defined.
                 'cat.aria',
 
-                // Requiremetns for sensory and visual cues.
+                // Requirements for sensory and visual cues.
                 // These largely related to viewport scale and zoom functionality.
                 'cat.sensory-and-visual-cues',
 

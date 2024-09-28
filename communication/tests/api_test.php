@@ -16,8 +16,17 @@
 
 namespace core_communication;
 
+use core_communication\task\add_members_to_room_task;
+use core_communication\task\create_and_configure_room_task;
+use communication_matrix\matrix_test_helper_trait;
+use core_communication\task\synchronise_provider_task;
+use core_communication\task\synchronise_providers_task;
+use core_communication\task\remove_members_from_room;
+use core_communication\task\update_room_task;
+
 defined('MOODLE_INTERNAL') || die();
 
+require_once(__DIR__ . '/../provider/matrix/tests/matrix_test_helper_trait.php');
 require_once(__DIR__ . '/communication_test_helper_trait.php');
 
 /**
@@ -27,43 +36,30 @@ require_once(__DIR__ . '/communication_test_helper_trait.php');
  * @category   test
  * @copyright  2023 Safat Shahin <safat.shahin@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @coversDefaultClass \core_communication\api
+ * @covers \core_communication\api
  */
 class api_test extends \advanced_testcase {
-
+    use matrix_test_helper_trait;
     use communication_test_helper_trait;
 
     public function setUp(): void {
         parent::setUp();
         $this->resetAfterTest();
         $this->setup_communication_configs();
-    }
-
-    /**
-     * Test the communication plugin list for the form element returns the correct number of plugins.
-     *
-     * @covers ::get_communication_plugin_list_for_form
-     */
-    public function test_get_communication_plugin_list_for_form(): void {
-        $communicationplugins = \core_communication\api::get_communication_plugin_list_for_form();
-        // Get the communication plugins.
-        $plugins = \core_component::get_plugin_list('communication');
-        // Check the number of plugins matches plus 1 as we have none in the selection.
-        $this->assertCount(count($plugins) + 1, $communicationplugins);
+        $this->initialise_mock_server();
     }
 
     /**
      * Test set data to the instance.
-     *
-     * @covers ::set_data
      */
     public function test_set_data(): void {
         $course = $this->get_course();
 
         $communication = \core_communication\api::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
         // Sample data.
@@ -73,83 +69,74 @@ class api_test extends \advanced_testcase {
         // Set the data.
         $communication->set_data($course);
 
+        $roomnameidenfier = $communication->get_provider() . 'roomname';
+
         // Test the set data.
-        $this->assertEquals($roomname, $course->communicationroomname);
+        $this->assertEquals($roomname, $course->$roomnameidenfier);
         $this->assertEquals($provider, $course->selectedcommunication);
     }
 
     /**
      * Test get_current_communication_provider method.
-     *
-     * @covers ::get_provider
      */
     public function test_get_provider(): void {
         $course = $this->get_course();
 
         $communication = \core_communication\api::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
         $this->assertEquals('communication_matrix', $communication->get_provider());
     }
 
     /**
-     * Test get_avatar_filerecord method.
-     *
-     * @covers ::get_avatar_filerecord
+     * Test set_avatar method.
      */
-    public function test_get_avatar_filerecord(): void {
-        $course = $this->get_course();
-
-        $communication = \core_communication\api::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
-        );
-        $filerecord = $communication->get_avatar_filerecord('avatar.svg');
-
-        $this->assertEquals('avatar.svg', $filerecord->filename);
-        $this->assertEquals('core_communication', $filerecord->component);
-        $this->assertEquals('avatar', $filerecord->filearea);
-    }
-
-    /**
-     * Test set_avatar_from_datauri method.
-     *
-     * @covers ::set_avatar_from_datauri_or_filepath
-     * @covers ::get_avatar_filerecord
-     */
-    public function test_set_avatar_from_datauri_or_filepath(): void {
+    public function test_set_avatar(): void {
         global $CFG;
+        $this->setAdminUser();
         $course = $this->get_course('Sampleroom', 'none');
 
         // Sample data.
         $communicationroomname = 'Sampleroom';
         $selectedcommunication = 'communication_matrix';
-        $avatarurl = $CFG->dirroot . '/communication/tests/fixtures/moodle_logo.jpg';
 
+        $avatar = $this->create_communication_file(
+            'moodle_logo.jpg',
+            'moodle_logo.jpg',
+        );
+
+        // Create the room, settingthe avatar.
         $communication = \core_communication\api::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
+            provider: $selectedcommunication,
         );
-        $communication->create_and_configure_room($selectedcommunication, $communicationroomname, $avatarurl);
 
+        $communication->create_and_configure_room($communicationroomname, $avatar);
+
+        // Reload the communication processor.
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
-        $this->assertNotNull($communicationprocessor->get_avatar());
+        // Compare result.
+        $this->assertEquals(
+            $avatar->get_contenthash(),
+            $communicationprocessor->get_avatar()->get_contenthash(),
+        );
     }
 
     /**
      * Test the create_and_configure_room method to add/create tasks.
-     *
-     * @covers ::create_and_configure_room
      */
     public function test_create_and_configure_room(): void {
         // Get the course by disabling communication so that we can create it manually calling the api.
@@ -160,11 +147,13 @@ class api_test extends \advanced_testcase {
         $selectedcommunication = 'communication_matrix';
 
         $communication = \core_communication\api::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
+            provider: $selectedcommunication,
         );
-        $communication->create_and_configure_room($selectedcommunication, $communicationroomname);
+        $communication->create_and_configure_room($communicationroomname);
 
         // Test the tasks added.
         $adhoctask = \core\task\manager::get_adhoc_tasks('\\core_communication\\task\\create_and_configure_room_task');
@@ -175,9 +164,10 @@ class api_test extends \advanced_testcase {
 
         // Test the communication record exists.
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
         $this->assertEquals($communicationroomname, $communicationprocessor->get_room_name());
@@ -186,12 +176,10 @@ class api_test extends \advanced_testcase {
 
     /**
      * Test the create_and_configure_room method to add/create tasks when no communication provider selected.
-     *
-     * @covers ::create_and_configure_room
      */
     public function test_create_and_configure_room_without_communication_provider_selected(): void {
         // Get the course by disabling communication so that we can create it manually calling the api.
-        $course = $this->getDataGenerator()->create_course();
+        $course = $this->get_course('Sampleroom', 'none');
 
         // Test the tasks added.
         $adhoctask = \core\task\manager::get_adhoc_tasks('\\core_communication\\task\\create_and_configure_room_task');
@@ -199,9 +187,10 @@ class api_test extends \advanced_testcase {
 
         // Test the communication record exists.
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
         $this->assertNull($communicationprocessor);
@@ -209,8 +198,6 @@ class api_test extends \advanced_testcase {
 
     /**
      * Test update operation.
-     *
-     * @covers ::update_room
      */
     public function test_update_room(): void {
         $course = $this->get_course();
@@ -220,35 +207,43 @@ class api_test extends \advanced_testcase {
         $selectedcommunication = 'communication_matrix';
 
         $communication = \core_communication\api::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
-        $communication->update_room($selectedcommunication, $communicationroomname);
-
-        // Test the tasks added.
-        $adhoctask = \core\task\manager::get_adhoc_tasks('\\core_communication\\task\\update_room_task');
-        // Should be 2 as one for create, another for update.
-        $this->assertCount(1, $adhoctask);
-
-        $adhoctask = reset($adhoctask);
-        $this->assertInstanceOf('\\core_communication\\task\\update_room_task', $adhoctask);
+        $communication->update_room(processor::PROVIDER_ACTIVE, $communicationroomname);
 
         // Test the communication record exists.
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
         $this->assertEquals($communicationroomname, $communicationprocessor->get_room_name());
         $this->assertEquals($selectedcommunication, $communicationprocessor->get_provider());
+        $this->assertTrue($communicationprocessor->is_instance_active());
+
+        $communication->update_room(processor::PROVIDER_INACTIVE, $communicationroomname);
+
+        // Test updating active state.
+        $communicationprocessor = processor::load_by_instance(
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
+            provider: $selectedcommunication,
+        );
+
+        $this->assertEquals($communicationroomname, $communicationprocessor->get_room_name());
+        $this->assertEquals($selectedcommunication, $communicationprocessor->get_provider());
+        $this->assertFalse($communicationprocessor->is_instance_active());
     }
 
     /**
      * Test delete operation.
-     *
-     * @covers ::delete_room
      */
     public function test_delete_room(): void {
         $course = $this->get_course();
@@ -259,18 +254,20 @@ class api_test extends \advanced_testcase {
 
         // Test the communication record exists.
         $communicationprocessor = processor::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
 
         $this->assertEquals($communicationroomname, $communicationprocessor->get_room_name());
         $this->assertEquals($selectedcommunication, $communicationprocessor->get_provider());
 
         $communication = \core_communication\api::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
         $communication->delete_room();
 
@@ -284,20 +281,18 @@ class api_test extends \advanced_testcase {
     }
 
     /**
-     * Test the update_room_membership for adding adn removing members.
-     *
-     * @covers ::add_members_to_room
-     * @covers ::remove_members_from_room
+     * Test the adding and removing of members from room.
      */
-    public function test_update_room_membership(): void {
+    public function test_adding_and_removing_of_room_membership(): void {
         $course = $this->get_course();
         $userid = $this->get_user()->id;
 
         // First test the adding members to a room.
         $communication = \core_communication\api::load_by_instance(
-            'core_course',
-            'coursecommunication',
-            $course->id
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
         );
         $communication->add_members_to_room([$userid]);
 
@@ -314,16 +309,233 @@ class api_test extends \advanced_testcase {
     }
 
     /**
-     * Test the enabled communication plugin list and default.
-     *
-     * @covers ::get_enabled_providers_and_default
+     * Test the update of room membership with the change user role.
      */
-    public function test_get_enabled_providers_and_default(): void {
-        list($communicationproviders, $defaulprovider) = \core_communication\api::get_enabled_providers_and_default();
-        // Get the communication plugins.
-        $plugins = \core_component::get_plugin_list('communication');
-        // Check the number of plugins matches plus 1 as we have none in the selection.
-        $this->assertCount(count($plugins) + 1, $communicationproviders);
-        $this->assertEquals(processor::PROVIDER_NONE, $defaulprovider);
+    public function test_update_room_membership_on_user_role_change(): void {
+        global $DB;
+
+        // Generate the data.
+        $user = $this->getDataGenerator()->create_user();
+        $course = $this->get_course();
+        $coursecontext = \context_course::instance($course->id);
+        $teacherrole = $DB->get_record('role', ['shortname' => 'teacher']);
+        $this->getDataGenerator()->enrol_user($user->id, $course->id);
+
+        $adhoctask = \core\task\manager::get_adhoc_tasks('\\core_communication\\task\\add_members_to_room_task');
+        $this->assertCount(1, $adhoctask);
+
+        $adhoctask = reset($adhoctask);
+        $this->assertInstanceOf('\\core_communication\\task\\add_members_to_room_task', $adhoctask);
+
+        // Test the tasks added as the role is a teacher.
+        $adhoctask = \core\task\manager::get_adhoc_tasks('\\core_communication\\task\\update_room_membership_task');
+        $this->assertCount(1, $adhoctask);
+
+        $adhoctask = reset($adhoctask);
+        $this->assertInstanceOf('\\core_communication\\task\\update_room_membership_task', $adhoctask);
+    }
+
+    /**
+     * Test sync_provider method for the sync of available provider.
+     */
+    public function test_sync_provider(): void {
+        // Generate the data.
+        $user = $this->getDataGenerator()->create_user();
+        $course1 = $this->get_course();
+        $this->getDataGenerator()->enrol_user($user->id, $course1->id);
+        $course2 = $this->get_course();
+        $this->getDataGenerator()->enrol_user($user->id, $course2->id);
+        // Now run the task to add sync providers.
+        $this->execute_task(synchronise_providers_task::class);
+        $adhoctask = \core\task\manager::get_adhoc_tasks(synchronise_provider_task::class);
+        $this->assertCount(2, $adhoctask);
+    }
+
+    /**
+     * Test the removal of all members from the room.
+     */
+    public function test_remove_all_members_from_room(): void {
+        $course = $this->get_course();
+        $userid = $this->get_user()->id;
+        $communication = \core_communication\api::load_by_instance(
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
+        );
+        $communication->add_members_to_room([$userid]);
+
+        // Now test the removing members from a room.
+        $communication->remove_all_members_from_room();
+
+        // Test the remove members tasks added.
+        $adhoctask = \core\task\manager::get_adhoc_tasks(remove_members_from_room::class);
+        $this->assertCount(1, $adhoctask);
+    }
+
+    /**
+     * Test the configuration of room changes as well as the membership with the change of provider.
+     */
+    public function test_configure_room_and_membership_by_provider(): void {
+        global $DB;
+
+        $course = $this->get_course('Sampleroom', 'none');
+        $userid = $this->get_user()->id;
+        $provider = 'communication_matrix';
+
+        $communication = \core_communication\api::load_by_instance(
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
+        );
+
+        $communication->configure_room_and_membership_by_provider(
+            provider: $provider,
+            instance: $course,
+            communicationroomname: $course->fullname,
+            users: [$userid],
+        );
+        $communication->reload();
+
+        // Test that the task to create a room is added.
+        $adhoctask = \core\task\manager::get_adhoc_tasks(create_and_configure_room_task::class);
+        $this->assertCount(1, $adhoctask);
+
+        // Test that no update tasks are added.
+        $adhoctask = \core\task\manager::get_adhoc_tasks(update_room_task::class);
+        $this->assertCount(0, $adhoctask);
+
+        // Test that the task to add members to room is not added, as we are adding the user mapping not the task.
+        $adhoctask = \core\task\manager::get_adhoc_tasks(add_members_to_room_task::class);
+        $this->assertCount(0, $adhoctask);
+
+        // Now delete all the ad-hoc tasks.
+        $DB->delete_records('task_adhoc');
+
+        // Now disable the provider by setting none.
+        $communication->configure_room_and_membership_by_provider(
+            provider: processor::PROVIDER_NONE,
+            instance: $course,
+            communicationroomname: $course->fullname,
+            users: [$userid],
+        );
+        $communication->reload();
+
+        // Test that the task to delete a room is added.
+        $adhoctask = \core\task\manager::get_adhoc_tasks(update_room_task::class);
+        $this->assertCount(1, $adhoctask);
+
+        // Test that the task to remove members from room is added.
+        $adhoctask = \core\task\manager::get_adhoc_tasks(remove_members_from_room::class);
+        $this->assertCount(1, $adhoctask);
+
+        // Now delete all the ad-hoc tasks.
+        $DB->delete_records('task_adhoc');
+
+        // Now try to set the same none provider again.
+        $communication->configure_room_and_membership_by_provider(
+            provider: processor::PROVIDER_NONE,
+            instance: $course,
+            communicationroomname: $course->fullname,
+            users: [$userid],
+        );
+
+        // Test that no communicaiton task is added.
+        $adhoctask = \core\task\manager::get_adhoc_tasks(create_and_configure_room_task::class);
+        $this->assertCount(0, $adhoctask);
+
+        $adhoctask = \core\task\manager::get_adhoc_tasks(update_room_task::class);
+        $this->assertCount(0, $adhoctask);
+
+        $adhoctask = \core\task\manager::get_adhoc_tasks(add_members_to_room_task::class);
+        $this->assertCount(0, $adhoctask);
+
+        $adhoctask = \core\task\manager::get_adhoc_tasks(remove_members_from_room::class);
+        $this->assertCount(0, $adhoctask);
+
+        // Now let's change it back to matrix and test the update task is added.
+        $communication->configure_room_and_membership_by_provider(
+            provider: $provider,
+            instance: $course,
+            communicationroomname: $course->fullname,
+            users: [$userid],
+        );
+        $communication->reload();
+
+        // Test create task is not added because communication has been created in the past.
+        $adhoctask = \core\task\manager::get_adhoc_tasks(create_and_configure_room_task::class);
+        $this->assertCount(0, $adhoctask);
+
+        // Test an update task added.
+        $adhoctask = \core\task\manager::get_adhoc_tasks(update_room_task::class);
+        $this->assertCount(1, $adhoctask);
+
+        // Test add membership task is added.
+        $adhoctask = \core\task\manager::get_adhoc_tasks(add_members_to_room_task::class);
+        $this->assertCount(1, $adhoctask);
+
+        // Now delete all the ad-hoc tasks.
+        $DB->delete_records('task_adhoc');
+
+        $course->customlinkurl = $course->customlinkurl ?? 'https://moodle.org';
+
+        // Now change the provider to another one.
+        $communication->configure_room_and_membership_by_provider(
+            provider: 'communication_customlink',
+            instance: $course,
+            communicationroomname: $course->fullname,
+            users: [$userid],
+        );
+        $communication->reload();
+
+        // Remove membership and update room task for the previous provider.
+        // Create room task for new one.
+        $adhoctask = \core\task\manager::get_adhoc_tasks(update_room_task::class);
+        $this->assertCount(1, $adhoctask);
+
+        $adhoctask = \core\task\manager::get_adhoc_tasks(remove_members_from_room::class);
+        $this->assertCount(1, $adhoctask);
+
+        $adhoctask = \core\task\manager::get_adhoc_tasks(create_and_configure_room_task::class);
+        $this->assertCount(1, $adhoctask);
+
+        // Now delete all the ad-hoc tasks.
+        $DB->delete_records('task_adhoc');
+
+        // Now disable the provider.
+        $communication->configure_room_and_membership_by_provider(
+            provider: processor::PROVIDER_NONE,
+            instance: $course,
+            communicationroomname: $course->fullname,
+            users: [$userid],
+        );
+        $communication->reload();
+
+        // Should have one update and one remove task.
+        $adhoctask = \core\task\manager::get_adhoc_tasks(update_room_task::class);
+        $this->assertCount(1, $adhoctask);
+
+        // This provider doesn't have any membership, so no remove task.
+        $adhoctask = \core\task\manager::get_adhoc_tasks(remove_members_from_room::class);
+        $this->assertCount(0, $adhoctask);
+
+        // Now delete all the ad-hoc tasks.
+        $DB->delete_records('task_adhoc');
+
+        // Now enable the same provider again.
+        $communication->configure_room_and_membership_by_provider(
+            provider: $provider,
+            instance: $course,
+            communicationroomname: $course->fullname,
+            users: [$userid],
+        );
+
+        // Now it should have one update and one add task.
+        $adhoctask = \core\task\manager::get_adhoc_tasks(update_room_task::class);
+        $this->assertCount(1, $adhoctask);
+
+        $adhoctask = \core\task\manager::get_adhoc_tasks(add_members_to_room_task::class);
+        $this->assertCount(1, $adhoctask);
     }
 }

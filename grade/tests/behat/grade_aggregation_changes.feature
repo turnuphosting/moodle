@@ -34,11 +34,11 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I change window size to "large"
     And I set the following administration settings values:
       | grade_aggregations_visible | Mean of grades,Weighted mean of grades,Simple weighted mean of grades,Mean of grades (with extra credits),Median of grades,Lowest grade,Highest grade,Mode of grades,Natural |
-    And I am on "Course 1" course homepage
-    And I navigate to "View > Grader report" in the course gradebook
+    And I am on the "Course 1" "grades > Grader report > View" page
     And I turn editing mode on
     And I click on grade item menu "Cat mean" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I set the following fields to these values:
       | Weight adjusted     | 1  |
       | Weight              | 20 |
@@ -46,6 +46,7 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I press "Save changes"
     And I click on grade item menu "Cat median" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I set the following fields to these values:
       | Weight adjusted     | 1  |
       | Weight              | 5  |
@@ -53,6 +54,7 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I press "Save changes"
     And I click on grade item menu "Cat min" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I set the following fields to these values:
       | Weight adjusted     | 0  |
       | Weight              | 0  |
@@ -107,7 +109,7 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     Given I click on grade item menu "Course 1" of type "course" on "grader" page
     And I choose "Edit category" in the open action menu
     And I set the field "Aggregation" to "Mean of grades"
-    When I press "Save changes"
+    When I click on "Save" "button" in the "Edit category" "dialogue"
     And I click on grade item menu "Item a1" of type "gradeitem" on "grader" page
     And I choose "Edit grade item" in the open action menu
     Then I should not see "Weight adjusted"
@@ -134,6 +136,7 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I click on "Cancel" "button" in the "Edit grade item" "dialogue"
     And I click on grade item menu "Cat mean" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I expand all fieldsets
     And I should not see "Weight adjusted"
     And I should not see "Weight" in the "#id_headerparent" "css_element"
@@ -141,6 +144,7 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I press "Cancel"
     And I click on grade item menu "Cat median" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I expand all fieldsets
     And I should not see "Weight adjusted"
     And I should not see "Weight" in the "#id_headerparent" "css_element"
@@ -148,6 +152,7 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I press "Cancel"
     And I click on grade item menu "Cat min" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I expand all fieldsets
     And I should not see "Weight adjusted"
     And I should not see "Weight" in the "#id_headerparent" "css_element"
@@ -156,7 +161,8 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I click on grade item menu "Cat natural &" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
     And I set the field "Aggregation" to "Mean of grades"
-    And I press "Save changes"
+    And I click on "Save" "button" in the "Edit category" "dialogue"
+    And I wait until the page is ready
     And I click on grade item menu "Item b1" of type "gradeitem" on "grader" page
     And I choose "Edit grade item" in the open action menu
     And I should not see "Weight adjusted"
@@ -185,7 +191,8 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I click on grade item menu "Course 1" of type "course" on "grader" page
     And I choose "Edit category" in the open action menu
     And I set the field "Aggregation" to "Natural"
-    And I press "Save changes"
+    And I click on "Save" "button" in the "Edit category" "dialogue"
+    And I wait until the page is ready
     And I click on grade item menu "Item a1" of type "gradeitem" on "grader" page
     And I choose "Edit grade item" in the open action menu
     And the field "Weight adjusted" matches value "0"
@@ -208,18 +215,21 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I click on "Cancel" "button" in the "Edit grade item" "dialogue"
     And I click on grade item menu "Cat mean" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I expand all fieldsets
     And the field "Weight adjusted" matches value "0"
     And the field "Extra credit" matches value "0"
     And I press "Cancel"
     And I click on grade item menu "Cat median" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I expand all fieldsets
     And the field "Weight adjusted" matches value "0"
     And the field "Extra credit" matches value "0"
     And I press "Cancel"
     And I click on grade item menu "Cat min" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I expand all fieldsets
     And the field "Weight adjusted" matches value "0"
     And the field "Extra credit" matches value "0"
@@ -227,7 +237,8 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I click on grade item menu "Cat natural &" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
     And I set the field "Aggregation" to "Natural"
-    And I press "Save changes"
+    And I click on "Save" "button" in the "Edit category" "dialogue"
+    And I wait until the page is ready
     And I click on grade item menu "Item b1" of type "gradeitem" on "grader" page
     And I choose "Edit grade item" in the open action menu
     And the field "Weight adjusted" matches value "0"
@@ -253,7 +264,8 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     Given I click on grade item menu "Course 1" of type "course" on "grader" page
     And I choose "Edit category" in the open action menu
     And I set the field "Aggregation" to "Weighted mean of grades"
-    And I press "Save changes"
+    And I click on "Save" "button" in the "Edit category" "dialogue"
+    And I wait until the page is ready
     And I click on grade item menu "Item a1" of type "gradeitem" on "grader" page
     And I choose "Edit grade item" in the open action menu
     Then I should not see "Weight adjusted"
@@ -280,6 +292,7 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I click on "Cancel" "button" in the "Edit grade item" "dialogue"
     And I click on grade item menu "Cat mean" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I expand all fieldsets
     And I should not see "Weight adjusted"
     And I should not see "Extra credit"
@@ -287,6 +300,7 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I press "Cancel"
     And I click on grade item menu "Cat median" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I expand all fieldsets
     And I should not see "Weight adjusted"
     And I should not see "Extra credit"
@@ -294,6 +308,7 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I press "Cancel"
     And I click on grade item menu "Cat min" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I expand all fieldsets
     And I should not see "Weight adjusted"
     And I should not see "Extra credit"
@@ -302,7 +317,8 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I click on grade item menu "Cat natural &" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
     And I set the field "Aggregation" to "Weighted mean of grades"
-    And I press "Save changes"
+    And I click on "Save" "button" in the "Edit category" "dialogue"
+    And I wait until the page is ready
     And I click on grade item menu "Item b1" of type "gradeitem" on "grader" page
     And I choose "Edit grade item" in the open action menu
     And I should not see "Weight adjusted"
@@ -331,7 +347,8 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I click on grade item menu "Course 1" of type "course" on "grader" page
     And I choose "Edit category" in the open action menu
     And I set the field "Aggregation" to "Natural"
-    And I press "Save changes"
+    And I click on "Save" "button" in the "Edit category" "dialogue"
+    And I wait until the page is ready
     And I click on grade item menu "Item a1" of type "gradeitem" on "grader" page
     And I choose "Edit grade item" in the open action menu
     And the field "Weight adjusted" matches value "0"
@@ -354,18 +371,21 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I click on "Cancel" "button" in the "Edit grade item" "dialogue"
     And I click on grade item menu "Cat mean" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I expand all fieldsets
     And the field "Weight adjusted" matches value "0"
     And the field "Extra credit" matches value "0"
     And I press "Cancel"
     And I click on grade item menu "Cat median" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I expand all fieldsets
     And the field "Weight adjusted" matches value "0"
     And the field "Extra credit" matches value "0"
     And I press "Cancel"
     And I click on grade item menu "Cat min" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
+    And I click on "Show more..." "link" in the ".modal-dialog" "css_element"
     And I expand all fieldsets
     And the field "Weight adjusted" matches value "0"
     And the field "Extra credit" matches value "0"
@@ -373,7 +393,8 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I click on grade item menu "Cat natural &" of type "category" on "grader" page
     And I choose "Edit category" in the open action menu
     And I set the field "Aggregation" to "Natural"
-    And I press "Save changes"
+    And I click on "Save" "button" in the "Edit category" "dialogue"
+    And I wait until the page is ready
     And I click on grade item menu "Item b1" of type "gradeitem" on "grader" page
     And I choose "Edit grade item" in the open action menu
     And the field "Weight adjusted" matches value "0"
@@ -402,8 +423,9 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I set the field "Select Item a2" to "1"
     And I set the field "Select Item a3" to "1"
     And I set the field "Select Item a4" to "1"
-    And I should not see "Cat natural &amp;" in the "select#menumoveafter" "css_element"
-    When I select "Cat natural &" from the "Move selected items to" singleselect
+    And I click on "Move" "button" in the "sticky-footer" "region"
+    And I click on "Cat natural &" "list_item" in the "Move items" "dialogue"
+    When I click on "Move" "button" in the "Move items" "dialogue"
     And I navigate to "View > Grader report" in the course gradebook
     And I click on grade item menu "Item a1" of type "gradeitem" on "grader" page
     And I choose "Edit grade item" in the open action menu
@@ -433,7 +455,9 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I set the field "Select Item a2" to "1"
     And I set the field "Select Item a3" to "1"
     And I set the field "Select Item a4" to "1"
-    And I select "Cat ec" from the "Move selected items to" singleselect
+    And I click on "Move" "button" in the "sticky-footer" "region"
+    And I click on "Cat ec" "list_item" in the "Move items" "dialogue"
+    And I click on "Move" "button" in the "Move items" "dialogue"
     And I navigate to "View > Grader report" in the course gradebook
     And I click on grade item menu "Item a1" of type "gradeitem" on "grader" page
     And I choose "Edit grade item" in the open action menu
@@ -457,7 +481,9 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I set the field "Select Item a2" to "1"
     And I set the field "Select Item a3" to "1"
     And I set the field "Select Item a4" to "1"
-    And I select "Cat simple" from the "Move selected items to" singleselect
+    And I click on "Move" "button" in the "sticky-footer" "region"
+    And I click on "Cat simple" "list_item" in the "Move items" "dialogue"
+    And I click on "Move" "button" in the "Move items" "dialogue"
     And I navigate to "View > Grader report" in the course gradebook
     And I click on grade item menu "Item a1" of type "gradeitem" on "grader" page
     And I choose "Edit grade item" in the open action menu
@@ -481,7 +507,9 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I set the field "Select Item a2" to "1"
     And I set the field "Select Item a3" to "1"
     And I set the field "Select Item a4" to "1"
-    And I select "Cat weighted" from the "Move selected items to" singleselect
+    And I click on "Move" "button" in the "sticky-footer" "region"
+    And I click on "Cat weighted" "list_item" in the "Move items" "dialogue"
+    And I click on "Move" "button" in the "Move items" "dialogue"
     And I navigate to "View > Grader report" in the course gradebook
     And I click on grade item menu "Item a1" of type "gradeitem" on "grader" page
     And I choose "Edit grade item" in the open action menu
@@ -509,7 +537,9 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I set the field "Select Item a2" to "1"
     And I set the field "Select Item a3" to "1"
     And I set the field "Select Item a4" to "1"
-    And I select "Cat weighted2" from the "Move selected items to" singleselect
+    And I click on "Move" "button" in the "sticky-footer" "region"
+    And I click on "Cat weighted2" "list_item" in the "Move items" "dialogue"
+    And I click on "Move" "button" in the "Move items" "dialogue"
     And I wait "2" seconds
     And I navigate to "View > Grader report" in the course gradebook
     And I click on grade item menu "Item a1" of type "gradeitem" on "grader" page
@@ -534,7 +564,9 @@ Feature: Changing the aggregation of an item affects its weight and extra credit
     And I set the field "Select Item a2" to "1"
     And I set the field "Select Item a3" to "1"
     And I set the field "Select Item a4" to "1"
-    And I select "Course 1" from the "Move selected items to" singleselect
+    And I click on "Move" "button" in the "sticky-footer" "region"
+    And I click on "Cat natural &" "list_item" in the "Move items" "dialogue"
+    And I click on "Move" "button" in the "Move items" "dialogue"
     And I navigate to "View > Grader report" in the course gradebook
     And I click on grade item menu "Item a1" of type "gradeitem" on "grader" page
     And I choose "Edit grade item" in the open action menu

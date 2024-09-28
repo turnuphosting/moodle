@@ -121,7 +121,7 @@ class core_shutdown_manager {
      * @param array $params
      * @return void
      */
-    public static function register_signal_handler($callback, array $params = null): void {
+    public static function register_signal_handler($callback, ?array $params = null): void {
         if (!is_callable($callback)) {
             error_log('Invalid custom signal function detected ' . var_export($callback, true)); // phpcs:ignore
         }
@@ -135,7 +135,7 @@ class core_shutdown_manager {
      * @param array $params
      * @return void
      */
-    public static function register_function($callback, array $params = null): void {
+    public static function register_function($callback, ?array $params = null): void {
         if (!is_callable($callback)) {
             error_log('Invalid custom shutdown function detected '.var_export($callback, true)); // phpcs:ignore
         }
@@ -147,6 +147,9 @@ class core_shutdown_manager {
      */
     public static function shutdown_handler() {
         global $DB;
+
+        // In case we caught an out of memory shutdown we increase memory limit to unlimited, so we can gracefully shut down.
+        raise_memory_limit(MEMORY_UNLIMITED);
 
         // Always ensure we know who the user is in access logs even if they
         // were logged in a weird way midway through the request.
@@ -195,7 +198,7 @@ class core_shutdown_manager {
      * Standard shutdown sequence.
      */
     protected static function request_shutdown() {
-        global $CFG;
+        global $CFG, $OUTPUT, $PERF;
 
         // Help apache server if possible.
         $apachereleasemem = false;
@@ -216,6 +219,10 @@ class core_shutdown_manager {
                 $perf = get_performance_info();
                 error_log("PERF: " . $perf['txt']);
             }
+            if (!empty($PERF->perfdebugdeferred)) {
+                $perf = get_performance_info();
+                echo $OUTPUT->select_element_for_replace('#perfdebugfooter', $perf['html']);
+            }
             if (MDL_PERFINC) {
                 $inc = get_included_files();
                 $ts  = 0;
@@ -234,6 +241,16 @@ class core_shutdown_manager {
                     error_log("Total size of files included: $ts ($hts)");
                 }
             }
+        }
+
+        // Close the current streaming element if any.
+        if ($OUTPUT->has_started()) {
+            echo $OUTPUT->close_element_for_append();
+        }
+
+        // Print any closing buffered tags.
+        if (!empty($CFG->closingtags)) {
+            echo $CFG->closingtags;
         }
     }
 }

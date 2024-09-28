@@ -48,6 +48,7 @@ class stateactions {
      * @param int[] $ids the list of affected course module ids
      * @param int $targetsectionid optional target section id
      * @param int $targetcmid optional target cm id
+     * @throws moodle_exception
      */
     public function cm_move(
         stateupdates $updates,
@@ -85,6 +86,9 @@ class stateactions {
             $cm = $modinfo->get_cm($cmid);
             $currentsectionid = $cm->section;
             $targetsection = $modinfo->get_section_info_by_id($targetsectionid, MUST_EXIST);
+            if ($targetsection->is_delegated() && $cm->get_delegated_section_info()) {
+                throw new moodle_exception('subsectionmoveerror', 'core');
+            }
             $beforecm = (!empty($beforecmdid)) ? $modinfo->get_cm($beforecmdid) : null;
             if ($beforecm === null || $beforecm->id != $cmid) {
                 moveto_module($cm, $targetsection, $beforecm);
@@ -140,6 +144,8 @@ class stateactions {
     /**
      * Move course sections to another location in the same course.
      *
+     * @deprecated since Moodle 4.4 MDL-77038.
+     * @todo MDL-80116 This will be deleted in Moodle 4.8.
      * @param stateupdates $updates the affected course elements track
      * @param stdClass $course the course object
      * @param int[] $ids the list of affected course module ids
@@ -153,6 +159,10 @@ class stateactions {
         ?int $targetsectionid = null,
         ?int $targetcmid = null
     ): void {
+        debugging(
+            'The method stateactions::section_move() has been deprecated, please use stateactions::section_move_after() instead.',
+            DEBUG_DEVELOPER
+        );
         // Validate target elements.
         if (!$targetsectionid) {
             throw new moodle_exception("Action cm_move requires targetsectionid");
@@ -417,7 +427,7 @@ class stateactions {
      * @param int[] $ids section ids
      * @param int $visible the new visible value
      */
-    protected function set_section_visibility (
+    protected function set_section_visibility(
         stateupdates $updates,
         stdClass $course,
         array $ids,
@@ -515,7 +525,7 @@ class stateactions {
             $course,
             $ids,
             __FUNCTION__,
-            ['moodle/course:manageactivities', 'moodle/course:activityvisibility']
+            ['moodle/course:activityvisibility']
         );
 
         $format = course_get_format($course->id);
@@ -529,10 +539,25 @@ class stateactions {
                 $allowstealth = !empty($CFG->allowstealth) && $format->allow_stealth_module_visibility($cm, $section);
                 $coursevisible = ($allowstealth) ? 0 : 1;
             }
-            set_coursemodule_visible($cm->id, $visible, $coursevisible);
+            set_coursemodule_visible($cm->id, $visible, $coursevisible, false);
             $modcontext = context_module::instance($cm->id);
             course_module_updated::create_from_cm($cm, $modcontext)->trigger();
+        }
+        course_modinfo::purge_course_modules_cache($course->id, $ids);
+        rebuild_course_cache($course->id, false, true);
+
+        $delegatedsections = [];
+        foreach ($cms as $cm) {
             $updates->add_cm_put($cm->id);
+            if (!$delegatedsection = $cm->get_delegated_section_info()) {
+                continue;
+            }
+            if (!in_array($delegatedsection->id, $delegatedsections)) {
+                $delegatedsections[] = $delegatedsection->id;
+            }
+        }
+        foreach ($delegatedsections as $sectionid => $section) {
+            $updates->add_section_put($sectionid);
         }
     }
 
@@ -556,7 +581,8 @@ class stateactions {
             $course,
             $ids,
             __FUNCTION__,
-            ['moodle/course:manageactivities', 'moodle/backup:backuptargetimport', 'moodle/restore:restoretargetimport']
+            ['moodle/backup:backuptargetimport', 'moodle/restore:restoretargetimport'],
+            false
         );
 
         $modinfo = get_fast_modinfo($course);
@@ -694,6 +720,10 @@ class stateactions {
         $this->validate_cms($course, $ids, __FUNCTION__, ['moodle/course:manageactivities']);
         $modinfo = get_fast_modinfo($course);
         $cms = $this->get_cm_info($modinfo, $ids);
+        $cms = $this->filter_cms_with_section_delegate($cms);
+        if (empty($cms)) {
+            return;
+        }
         list($insql, $inparams) = $DB->get_in_or_equal(array_keys($cms), SQL_PARAMS_NAMED);
         $DB->set_field_select('course_modules', 'indent', $indent, "id $insql", $inparams);
         rebuild_course_cache($course->id, false, true);
@@ -797,7 +827,7 @@ class stateactions {
      * @param int[] $ids the course modules $ids
      * @return cm_info[] the extracted cm_info objects
      */
-    protected function get_cm_info (course_modinfo $modinfo, array $ids): array {
+    protected function get_cm_info(course_modinfo $modinfo, array $ids): array {
         $cms = [];
         foreach ($ids as $cmid) {
             $cms[$cmid] = $modinfo->get_cm($cmid);
@@ -821,7 +851,7 @@ class stateactions {
     }
 
     /**
-     * Update the course content section collapsed value.
+     * Update the course content section state to collapse.
      *
      * @param stateupdates $updates the affected course elements track
      * @param stdClass $course the course object
@@ -834,17 +864,40 @@ class stateactions {
         stdClass $course,
         array $ids = [],
         ?int $targetsectionid = null,
-        ?int $targetcmid = null
+        ?int $targetcmid = null,
     ): void {
         if (!empty($ids)) {
             $this->validate_sections($course, $ids, __FUNCTION__);
         }
         $format = course_get_format($course->id);
-        $format->set_sections_preference('contentcollapsed', $ids);
+        $format->add_section_preference_ids('contentcollapsed', $ids);
     }
 
     /**
-     * Update the course index section collapsed value.
+     * Update the course content section state to expand.
+     *
+     * @param stateupdates $updates the affected course elements track
+     * @param stdClass $course the course object
+     * @param int[] $ids the collapsed section ids
+     * @param int|null $targetsectionid not used
+     * @param int|null $targetcmid not used
+     */
+    public function section_content_expanded(
+        stateupdates $updates,
+        stdClass $course,
+        array $ids = [],
+        ?int $targetsectionid = null,
+        ?int $targetcmid = null,
+    ): void {
+        if (!empty($ids)) {
+            $this->validate_sections($course, $ids, __FUNCTION__);
+        }
+        $format = course_get_format($course->id);
+        $format->remove_section_preference_ids('contentcollapsed', $ids);
+    }
+
+    /**
+     * Update the course index section state to collapse.
      *
      * @param stateupdates $updates the affected course elements track
      * @param stdClass $course the course object
@@ -857,13 +910,36 @@ class stateactions {
         stdClass $course,
         array $ids = [],
         ?int $targetsectionid = null,
-        ?int $targetcmid = null
+        ?int $targetcmid = null,
     ): void {
         if (!empty($ids)) {
             $this->validate_sections($course, $ids, __FUNCTION__);
         }
         $format = course_get_format($course->id);
-        $format->set_sections_preference('indexcollapsed', $ids);
+        $format->add_section_preference_ids('indexcollapsed', $ids);
+    }
+
+    /**
+     * Update the course index section state to expand.
+     *
+     * @param stateupdates $updates the affected course elements track
+     * @param stdClass $course the course object
+     * @param int[] $ids the collapsed section ids
+     * @param int|null $targetsectionid not used
+     * @param int|null $targetcmid not used
+     */
+    public function section_index_expanded(
+        stateupdates $updates,
+        stdClass $course,
+        array $ids = [],
+        ?int $targetsectionid = null,
+        ?int $targetcmid = null,
+    ): void {
+        if (!empty($ids)) {
+            $this->validate_sections($course, $ids, __FUNCTION__);
+        }
+        $format = course_get_format($course->id);
+        $format->remove_section_preference_ids('indexcollapsed', $ids);
     }
 
     /**
@@ -1015,6 +1091,26 @@ class stateactions {
     }
 
     /**
+     * Remove course modules with section delegate from a list.
+     *
+     * @param cm_info[] $cms the list of course modules to filter.
+     * @return cm_info[] the filtered list of course modules indexed by id.
+     */
+    protected function filter_cms_with_section_delegate(array $cms): array {
+        $filtered = [];
+        $modules = [];
+        foreach ($cms as $cm) {
+            if (!isset($modules[$cm->module])) {
+                $modules[$cm->module] = sectiondelegate::has_delegate_class('mod_' . $cm->modname);
+            }
+            if (!$modules[$cm->module]) {
+                $filtered[$cm->id] = $cm;
+            }
+        }
+        return $filtered;
+    }
+
+    /**
      * Checks related to sections: course format support them, all given sections exist and topic 0 is not included.
      *
      * @param stdClass $course The course where given $sectionids belong.
@@ -1050,10 +1146,17 @@ class stateactions {
      * @param stdClass $course The course where given $cmids belong.
      * @param array $cmids List of course module ids to validate.
      * @param string $info additional information in case of error.
-     * @param array $capabilities optional capabilities checks per each cm context.
+     * @param array $capabilities optional capabilities checks to require.
+     * @param bool $usemodcontext whether to use each module context, or the course context
      * @throws moodle_exception if any id is not valid
      */
-    protected function validate_cms(stdClass $course, array $cmids, ?string $info = null, array $capabilities = []): void {
+    protected function validate_cms(
+        stdClass $course,
+        array $cmids,
+        ?string $info = null,
+        array $capabilities = [],
+        bool $usemodcontext = true,
+    ): void {
 
         if (empty($cmids)) {
             throw new moodle_exception('emptycmids', 'core', null, $info);
@@ -1064,11 +1167,48 @@ class stateactions {
         if (count($cmids) != count($intersect)) {
             throw new moodle_exception('unexistingcmid', 'core', null, $info);
         }
+
         if (!empty($capabilities)) {
-            foreach ($cmids as $cmid) {
-                $modcontext = context_module::instance($cmid);
-                require_all_capabilities($capabilities, $modcontext);
+            if ($usemodcontext) {
+                foreach ($cmids as $cmid) {
+                    $modcontext = context_module::instance($cmid);
+                    require_all_capabilities($capabilities, $modcontext);
+                }
+            } else {
+                $coursecontext = context_course::instance($course->id);
+                require_all_capabilities($capabilities, $coursecontext);
             }
         }
+    }
+
+    /**
+     * Create a course module.
+     *
+     * @param stateupdates $updates the affected course elements track
+     * @param stdClass $course the course object
+     * @param string $modname the module name
+     * @param int $targetsectionnum target section number
+     * @param int|null $targetcmid optional target cm id
+     */
+    public function create_module(
+        stateupdates $updates,
+        stdClass $course,
+        string $modname,
+        int $targetsectionnum,
+        ?int $targetcmid = null
+    ): void {
+        global $CFG;
+        require_once($CFG->dirroot . '/course/modlib.php');
+
+        $coursecontext = context_course::instance($course->id);
+        require_capability('moodle/course:update', $coursecontext);
+
+        // Method "can_add_moduleinfo" called in "prepare_new_moduleinfo_data" will handle the capability checks.
+        [, , , , $moduleinfo] = prepare_new_moduleinfo_data($course, $modname, $targetsectionnum);
+        $moduleinfo->beforemod = $targetcmid;
+        create_module((object) $moduleinfo);
+
+        // Adding module affects section structure, and if the module has a delegated section even the course structure.
+        $this->course_state($updates, $course);
     }
 }

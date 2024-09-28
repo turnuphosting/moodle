@@ -364,7 +364,7 @@ class qformat_default {
         // check for errors before we continue
         if ($this->stoponerror and ($this->importerrors>0)) {
             echo $OUTPUT->notification(get_string('importparseerror', 'question'));
-            return true;
+            return false;
         }
 
         // get list of valid answer grades
@@ -388,8 +388,8 @@ class qformat_default {
                     }
                 }
                 if ($invalidfractions) {
-                    echo $OUTPUT->notification(get_string('invalidgrade', 'question',
-                            implode(', ', $invalidfractions)));
+                    $a = ['grades' => implode(', ', $invalidfractions), 'question' => $question->name];
+                    echo $OUTPUT->notification(get_string('invalidgradequestion', 'question', $a));
                     ++$gradeerrors;
                     continue;
                 } else {
@@ -402,6 +402,7 @@ class qformat_default {
 
         // check for errors before we continue
         if ($this->stoponerror && $gradeerrors > 0) {
+            echo $OUTPUT->notification(get_string('importparseerror', 'question'));
             return false;
         }
 
@@ -476,9 +477,6 @@ class qformat_default {
             $questionversion->status = \core_question\local\bank\question_version_status::QUESTION_STATUS_READY;
             $questionversion->id = $DB->insert_record('question_versions', $questionversion);
 
-            $event = \core\event\question_created::create_from_question_instance($question, $this->importcontext);
-            $event->trigger();
-
             if (isset($question->questiontextitemid)) {
                 $question->questiontext = file_save_draft_area_files($question->questiontextitemid,
                         $this->importcontext->id, 'question', 'questiontext', $question->id,
@@ -506,6 +504,8 @@ class qformat_default {
             // Now to save all the answers and type-specific options
 
             $result = question_bank::get_qtype($question->qtype)->save_question_options($question);
+            $event = \core\event\question_created::create_from_question_instance($question, $this->importcontext);
+            $event->trigger();
 
             if (core_tag_tag::is_enabled('core_question', 'question')) {
                 // Is the current context we're importing in a course context?
@@ -960,15 +960,16 @@ class qformat_default {
             $contextid = $DB->get_field('question_categories', 'contextid', ['id' => $qcategory]);
             $question->contextid = $contextid;
             $question->idnumber = $questionbankentry->idnumber;
+
+            // Do not export hidden questions.
+            if ($question->status === \core_question\local\bank\question_version_status::QUESTION_STATUS_HIDDEN) {
+                continue;
+            }
+
             if ($question->status === \core_question\local\bank\question_version_status::QUESTION_STATUS_READY) {
                 $question->status = 0;
             } else {
                 $question->status = 1;
-            }
-
-            // do not export hidden questions
-            if (!empty($question->hidden)) {
-                continue;
             }
 
             // do not export random questions

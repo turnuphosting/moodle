@@ -26,6 +26,8 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+defined('MOODLE_INTERNAL') || die();
+
 $definitions = array(
 
     // Used to store processed lang files.
@@ -237,6 +239,16 @@ $definitions = array(
         'mode' => cache_store::MODE_SESSION,
         'simplekeys' => true,
         'simpledata' => true,
+    ],
+    // Course actions instances cache.
+    'courseactionsinstances' => [
+        'mode' => cache_store::MODE_REQUEST,
+        'simplekeys' => true,
+        'simpledata' => false,
+        'staticacceleration' => true,
+        // Executing actions in more than 10 courses usually means executing the same action on each course
+        // so there is no need for caching individual course instances.
+        'staticaccelerationsize' => 10,
     ],
     // Used to store data for repositories to avoid repetitive DB queries within one request.
     'repositories' => array(
@@ -585,5 +597,59 @@ $definitions = array(
         'staticacceleration' => true,
         'canuselocalstore' => true,
         'staticaccelerationsize' => 100,
+    ],
+
+    // Cache if a user has the capability to share to MoodleNet.
+    'moodlenet_usercanshare' => [
+        'mode' => cache_store::MODE_SESSION,
+        'simplekeys' => true,
+        'simpledata' => true,
+        'ttl' => 1800,
+        'invalidationevents' => [
+            'changesincoursecat',
+            'changesincategoryenrolment',
+            'changesincourse',
+        ],
+    ],
+
+    // A theme has been used in context to override the default theme.
+    // Applies to user, cohort, category and course.
+    'theme_usedincontext' => [
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => true,
+        'staticacceleration' => true,
+    ],
+
+    'routes' => [
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => true,
+        'canuselocalstore' => true,
+    ],
+    // Cache to store user AI policy acceptance status.
+    'ai_policy' => [
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true, // Cache must use simple keys (a-zA-Z0-9_).
+        'simpledata' => true, // Cache stores integer values which are simple data.
+        'staticacceleration' => true,
+        'datasource' => \core_ai\cache\policy::class,
+        'canuselocalstore' => true,
+    ],
+    // Cache to store AI rate limits.
+    // Used by AI Provider plugins to limit the number of requests to external services.
+    'ai_ratelimit' => [
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true, // Cache must use simple keys (a-zA-Z0-9_).
+        'simpledata' => true, // Cache stores integer values which are simple data.
+        'staticacceleration' => true,
+    ],
+
+    // The navigation_cache class used this cache to store the navigation nodes.
+    'navigation_cache' => [
+        'mode' => cache_store::MODE_SESSION,
+        'simplekeys' => true,
+        'simpledata' => true,
+        'ttl' => 1800,
     ],
 );

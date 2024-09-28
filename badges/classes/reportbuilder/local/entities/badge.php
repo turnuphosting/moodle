@@ -26,7 +26,8 @@ use lang_string;
 use moodle_url;
 use stdClass;
 use core_reportbuilder\local\entities\base;
-use core_reportbuilder\local\filters\{select, text};
+use core_reportbuilder\local\filters\{date, select, text};
+use core_reportbuilder\local\helpers\database;
 use core_reportbuilder\local\report\{column, filter};
 
 defined('MOODLE_INTERNAL') or die;
@@ -44,16 +45,16 @@ require_once("{$CFG->libdir}/badgeslib.php");
 class badge extends base {
 
     /**
-     * Database tables that this entity uses and their default aliases
+     * Database tables that this entity uses
      *
-     * @return array
+     * @return string[]
      */
-    protected function get_default_table_aliases(): array {
+    protected function get_default_tables(): array {
         return [
-            'badge' => 'b',
-            'context' => 'bctx',
-            'tag_instance' => 'bti',
-            'tag' => 'bt',
+            'badge',
+            'context',
+            'tag_instance',
+            'tag',
         ];
     }
 
@@ -110,6 +111,25 @@ class badge extends base {
             ->add_field("{$badgealias}.name")
             ->set_is_sortable(true);
 
+        // Name with link.
+        $columns[] = (new column(
+            'namewithlink',
+            new lang_string('namewithlink', 'core_badges'),
+            $this->get_entity_name()
+        ))
+            ->add_joins($this->get_joins())
+            ->set_type(column::TYPE_TEXT)
+            ->add_fields("{$badgealias}.name, {$badgealias}.id")
+            ->set_is_sortable(true)
+            ->add_callback(static function(?string $value, stdClass $row): string {
+                if (!$row->id) {
+                    return '';
+                }
+
+                $url = new moodle_url('/badges/overview.php', ['id' => $row->id]);
+                return html_writer::link($url, $row->name);
+            });
+
         // Description (note, this column contains plaintext so requires no post-processing).
         $descriptionfieldsql = "{$badgealias}.description";
         if ($DB->get_dbfamily() === 'oracle') {
@@ -155,13 +175,11 @@ class badge extends base {
             ->add_join("LEFT JOIN {context} {$contextalias}
                     ON {$contextalias}.contextlevel = " . CONTEXT_COURSE . "
                    AND {$contextalias}.instanceid = {$badgealias}.courseid")
-            ->set_type(column::TYPE_INTEGER)
             ->add_fields("{$badgealias}.id, {$badgealias}.type, {$badgealias}.courseid")
             ->add_field($DB->sql_cast_to_char("{$badgealias}.imagecaption"), 'imagecaption')
             ->add_fields(context_helper::get_preload_record_columns_sql($contextalias))
-            ->set_disabled_aggregation_all()
-            ->add_callback(static function(?int $badgeid, stdClass $badge): string {
-                if (!$badgeid) {
+            ->add_callback(static function($value, stdClass $badge): string {
+                if ($badge->id === null) {
                     return '';
                 }
                 if ($badge->type == BADGE_TYPE_SITE) {
@@ -171,7 +189,7 @@ class badge extends base {
                     $context = context_course::instance($badge->courseid);
                 }
 
-                $badgeimage = moodle_url::make_pluginfile_url($context->id, 'badges', 'badgeimage', $badgeid, '/', 'f2');
+                $badgeimage = moodle_url::make_pluginfile_url($context->id, 'badges', 'badgeimage', $badge->id, '/', 'f2');
                 return html_writer::img($badgeimage, $badge->imagecaption);
             });
 
@@ -187,7 +205,7 @@ class badge extends base {
             ->set_is_sortable(true)
             ->add_callback(static function($language): string {
                 $languages = get_string_manager()->get_list_of_languages();
-                return $languages[$language] ?? $language ?? '';
+                return (string) ($languages[$language] ?? $language);
             });
 
         // Version.
@@ -212,7 +230,11 @@ class badge extends base {
             ->add_field("{$badgealias}.status")
             ->set_is_sortable(true)
             ->add_callback(static function($status): string {
-                return $status ? get_string("badgestatus_{$status}", 'core_badges') : '';
+                if ($status === null) {
+                    return '';
+                }
+
+                return get_string("badgestatus_{$status}", 'core_badges');
             });
 
         // Expiry date/period.
@@ -260,6 +282,8 @@ class badge extends base {
      * @return filter[]
      */
     protected function get_all_filters(): array {
+        global $DB;
+
         $badgealias = $this->get_table_alias('badge');
 
         // Name.
@@ -269,6 +293,16 @@ class badge extends base {
             new lang_string('name'),
             $this->get_entity_name(),
             "{$badgealias}.name"
+        ))
+            ->add_joins($this->get_joins());
+
+        // Version.
+        $filters[] = (new filter(
+            text::class,
+            'version',
+            new lang_string('version', 'core_badges'),
+            $this->get_entity_name(),
+            "{$badgealias}.version"
         ))
             ->add_joins($this->get_joins());
 
@@ -287,6 +321,30 @@ class badge extends base {
                 BADGE_STATUS_INACTIVE_LOCKED => new lang_string('badgestatus_2', 'core_badges'),
                 BADGE_STATUS_ACTIVE_LOCKED => new lang_string('badgestatus_3', 'core_badges'),
                 BADGE_STATUS_ARCHIVED => new lang_string('badgestatus_4', 'core_badges'),
+            ]);
+
+        // Expiry date/period.
+        $paramtime = database::generate_param_name();
+        $filters[] = (new filter(
+            date::class,
+            'expiry',
+            new lang_string('expirydate', 'core_badges'),
+            $this->get_entity_name(),
+            "CASE WHEN {$badgealias}.expiredate IS NULL AND {$badgealias}.expireperiod IS NULL
+                  THEN " . SQL_INT_MAX . "
+                  ELSE COALESCE({$badgealias}.expiredate, {$badgealias}.expireperiod + :{$paramtime})
+             END",
+            [$paramtime => time()]
+        ))
+            ->add_joins($this->get_joins())
+            ->set_limited_operators([
+                date::DATE_ANY,
+                date::DATE_RANGE,
+                date::DATE_LAST,
+                date::DATE_CURRENT,
+                date::DATE_NEXT,
+                date::DATE_PAST,
+                date::DATE_FUTURE,
             ]);
 
         // Type.

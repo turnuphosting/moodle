@@ -255,7 +255,7 @@ define(['jquery', 'core/notification', 'core/str', 'core/form-autocomplete',
 
         var select = this._region.find('[data-action=change-user]');
         var currentUserID = select.data('currentuserid');
-        this._updateFilterPreferences(currentUserID, this._filters, preferenceNames).done(function() {
+        this._updateFilterPreferences(currentUserID, this._filters, preferenceNames).then(function() {
             // Reload the list of users to apply the new filters.
             if (!this._loadAllUsers()) {
                 var userid = parseInt(select.attr('data-selected'));
@@ -274,7 +274,7 @@ define(['jquery', 'core/notification', 'core/str', 'core/form-autocomplete',
                 }
 
             }
-        }.bind(this)).fail(notification.exception);
+        }.bind(this)).catch(notification.exception);
         this._refreshCount();
     };
 
@@ -336,8 +336,9 @@ define(['jquery', 'core/notification', 'core/str', 'core/form-autocomplete',
         } else {
             select.attr('data-selected', userid);
 
-            if (!isNaN(useridnumber) && useridnumber > 0) {
-                $(document).trigger('user-changed', userid);
+            // If we have some filtered users, and userid is specified, then trigger change.
+            if (this._filteredUsers.length > 0 && !isNaN(useridnumber) && useridnumber > 0) {
+                $(document).trigger('user-changed', useridnumber);
             }
         }
     };

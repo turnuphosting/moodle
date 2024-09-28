@@ -462,7 +462,7 @@ abstract class oauth2_client extends curl {
     public function is_logged_in() {
         // Has the token expired?
         if (isset($this->accesstoken->expires) && time() >= $this->accesstoken->expires) {
-            $this->log_out();
+            $this->store_token(null);
             return false;
         }
 
@@ -639,7 +639,7 @@ abstract class oauth2_client extends curl {
      * @param string $url The URL to request
      * @param array $options
      * @param mixed $acceptheader mimetype (as string) or false to skip sending an accept header.
-     * @return bool
+     * @return string
      */
     protected function request($url, $options = array(), $acceptheader = 'application/json') {
         $murl = new moodle_url($url);

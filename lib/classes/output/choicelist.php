@@ -16,9 +16,6 @@
 
 namespace core\output;
 
-use renderable;
-use renderer_base;
-
 /**
  * A generic user choice output class.
  *
@@ -29,8 +26,7 @@ use renderer_base;
  * @copyright  2023 Ferran Recio <ferran@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class choicelist implements renderable {
-
+class choicelist implements named_templatable, renderable {
     /** @var object[] The user choices. */
     protected $options = [];
 
@@ -39,6 +35,9 @@ class choicelist implements renderable {
 
     /** @var string the choice description. */
     protected $description = null;
+
+    /** @var bool if the selected value can be empty. */
+    protected $allowempty = null;
 
     /**
      * Constructor.
@@ -83,6 +82,31 @@ class choicelist implements renderable {
     }
 
     /**
+     * Get the number of options added to the choice list.
+     * @return int
+     */
+    public function count_options(): int {
+        return count($this->options);
+    }
+
+    /**
+     * Get the selectable options.
+     *
+     * This method returns an array of options that are selectable, excluding the selected option and any disabled options.
+     *
+     * @return \stdClass[]
+     */
+    public function get_selectable_options(): array {
+        $selectableoptions = [];
+        foreach ($this->options as $option) {
+            if ($option['value'] !== $this->selected && !$option['disabled']) {
+                $selectableoptions[] = (object) $option;
+            }
+        }
+        return $selectableoptions;
+    }
+
+    /**
      * Set the selected option.
      *
      * @param string $value The value of the selected option.
@@ -97,7 +121,35 @@ class choicelist implements renderable {
      * @return string|null The value of the selected option.
      */
     public function get_selected_value(): ?string {
+        if (empty($this->selected) && !$this->allowempty && !empty($this->options)) {
+            return array_key_first($this->options);
+        }
         return $this->selected;
+    }
+
+    /**
+     * Set the allow empty option.
+     * @param bool $allowempty Whether the selected value can be empty.
+     */
+    public function set_allow_empty(bool $allowempty) {
+        $this->allowempty = $allowempty;
+    }
+
+    /**
+     * Get the allow empty option.
+     * @return bool Whether the selected value can be empty.
+     */
+    public function get_allow_empty(): bool {
+        return $this->allowempty;
+    }
+
+    /**
+     * Check if the value is in the options.
+     * @param string $value The value to check.
+     * @return bool
+     */
+    public function has_value(string $value): bool {
+        return isset($this->options[$value]);
     }
 
     /**
@@ -131,7 +183,9 @@ class choicelist implements renderable {
     }
 
     /**
-     * Set the option disabled.
+     * Sets the HTML attributes to the option.
+     *
+     * This method will remove any previous extra attributes.
      *
      * @param string $value The value of the option.
      * @param array $extras an array to add HTML attributes to the option (attribute => value).
@@ -140,14 +194,65 @@ class choicelist implements renderable {
         if (!isset($this->options[$value])) {
             return;
         }
-        $extrasattributes = [];
+        $this->options[$value]['extras'] = [];
+        $this->add_option_extras($value, $extras);
+    }
+
+    /**
+     * Add HTML attributes to the option.
+     * @param string $value The value of the option.
+     * @param array $extras an array to add HTML attributes to the option (attribute => value).
+     */
+    public function add_option_extras(string $value, array $extras) {
+        if (!isset($this->options[$value])) {
+            return;
+        }
+        if (!isset($this->options[$value]['extras'])) {
+            $this->options[$value]['extras'] = [];
+        }
         foreach ($extras as $attribute => $attributevalue) {
-            $extrasattributes[] = [
+            $this->options[$value]['extras'][] = [
                 'attribute' => $attribute,
                 'value' => $attributevalue,
             ];
         }
-        $this->options[$value]['extras'] = $extrasattributes;
+    }
+
+    /**
+     * Retrieves the HTML attributes for a given value from the options array.
+
+     * @param string $value The value for which to retrieve the extras.
+     * @return array an array of HTML attributes of the option (attribute => value).
+     */
+    public function get_option_extras(string $value): array {
+        if (!isset($this->options[$value]) || !isset($this->options[$value]['extras'])) {
+            return [];
+        }
+        $result = [];
+        foreach ($this->options[$value]['extras'] as $extra) {
+            $result[$extra['attribute']] = $extra['value'];
+        }
+        return $result;
+    }
+
+    /**
+     * Get the selected option HTML.
+     *
+     * This method is used to display the selected option and the option icon.
+     *
+     * @param renderer_base $output The renderer.
+     * @return string
+     */
+    public function get_selected_content(renderer_base $output): string {
+        if (empty($this->selected)) {
+            return '';
+        }
+        $option = $this->options[$this->selected];
+        $icon = '';
+        if (!empty($option['icon'])) {
+            $icon = $output->render($option['icon']);
+        }
+        return $icon . $option['name'];
     }
 
     /**
@@ -160,7 +265,7 @@ class choicelist implements renderable {
         $options = [];
         foreach ($this->options as $option) {
             if (!empty($option['icon'])) {
-                $option['icon'] = $option['icon']->export_for_template($output);
+                $option['icon'] = $option['icon']->export_for_pix($output);
             }
             $option['hasicon'] = !empty($option['icon']);
 
@@ -169,7 +274,7 @@ class choicelist implements renderable {
             }
             $option['hasurl'] = !empty($option['url']);
 
-            if ($option['value'] == $this->selected) {
+            if ($option['value'] == $this->get_selected_value()) {
                 $option['selected'] = true;
             }
 
@@ -184,5 +289,15 @@ class choicelist implements renderable {
             'options' => $options,
             'hasoptions' => !empty($options),
         ];
+    }
+
+    /**
+     * Get the name of the template to use for this templatable.
+     *
+     * @param renderer_base $renderer The renderer requesting the template name
+     * @return string
+     */
+    public function get_template_name(renderer_base $renderer): string {
+        return 'core/local/choicelist';
     }
 }

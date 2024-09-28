@@ -30,7 +30,6 @@ use core\output\choicelist;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class status extends dialog {
-
     /**
      * @var choicelist content of dialog.
      */
@@ -44,6 +43,8 @@ class status extends dialog {
      * - buttonclasses: the button CSS classes.
      * - dialogwidth: the dropdown width.
      * - extras: extra HTML attributes (attribute => value).
+     * - buttonsync: if the button should be synced with the selected value.
+     * - updatestatus: if component must update the status and trigger a change event when clicked.
      *
      * @param string $buttoncontent the button content
      * @param choicelist $choices the choice object
@@ -52,6 +53,12 @@ class status extends dialog {
     public function __construct(string $buttoncontent, choicelist $choices, array $definition = []) {
         parent::__construct($buttoncontent, '', $definition);
         $this->set_choice($choices);
+        if ($definition['buttonsync'] ?? false) {
+            $this->extras['data-button-sync'] = 'true';
+        }
+        if ($definition['updatestatus'] ?? false) {
+            $this->extras['data-update-status'] = 'true';
+        }
     }
 
     /**

@@ -40,7 +40,8 @@ function imscp_supports($feature) {
         case FEATURE_GRADE_OUTCOMES:          return false;
         case FEATURE_BACKUP_MOODLE2:          return true;
         case FEATURE_SHOW_DESCRIPTION:        return true;
-        case FEATURE_MOD_PURPOSE:             return MOD_PURPOSE_CONTENT;
+        case FEATURE_MOD_PURPOSE:
+            return MOD_PURPOSE_INTERACTIVECONTENT;
 
         default: return null;
     }
@@ -392,7 +393,7 @@ function imscp_export_contents($cm, $baseurl) {
     $structure['fileurl']      = null;
     $structure['timecreated']  = $imscp->timemodified;
     $structure['timemodified'] = $imscp->timemodified;
-    $structure['content']      = json_encode(unserialize($imscp->structure));
+    $structure['content']      = json_encode(unserialize_array($imscp->structure));
     $structure['sortorder']    = 0;
     $structure['userid']       = null;
     $structure['author']       = null;

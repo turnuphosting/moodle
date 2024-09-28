@@ -146,6 +146,9 @@ abstract class moodleform {
     /** @var bool|null stores the validation result of this form or null if not yet validated */
     protected $_validated = null;
 
+    /** @var int Unique identifier to be used for action buttons. */
+    static protected $uniqueid = 0;
+
     /**
      * The constructor function calls the abstract function definition() and it will then
      * process and clean and attempt to validate incoming data.
@@ -1064,7 +1067,7 @@ abstract class moodleform {
     /**
      * Form definition. Abstract method - always override!
      */
-    protected abstract function definition();
+    abstract protected function definition();
 
     /**
      * After definition hook.
@@ -1359,21 +1362,35 @@ abstract class moodleform {
      * @param string $submitlabel label for submit button, defaults to get_string('savechanges')
      */
     public function add_action_buttons($cancel = true, $submitlabel = null) {
-        if (is_null($submitlabel)){
+        if (is_null($submitlabel)) {
             $submitlabel = get_string('savechanges');
         }
-        $mform =& $this->_form;
-        if ($cancel){
-            //when two elements we need a group
-            $buttonarray=array();
-            $buttonarray[] = &$mform->createElement('submit', 'submitbutton', $submitlabel);
-            $buttonarray[] = &$mform->createElement('cancel');
-            $mform->addGroup($buttonarray, 'buttonar', '', array(' '), false);
+        $mform = $this->_form;
+        // Only use uniqueid if the form defines it needs to be used.
+        $forceuniqueid = false;
+        if (is_array($this->_customdata)) {
+            $forceuniqueid = $this->_customdata['forceuniqueid'] ?? false;
+        }
+        // Keep the first action button as submitbutton (without uniqueid) because single forms pages expect this to happen.
+        $submitbuttonname = $forceuniqueid && $this::$uniqueid > 0 ? 'submitbutton_' . $this::$uniqueid : 'submitbutton';
+        if ($cancel) {
+            // When two elements we need a group.
+            $buttonarray = [
+                $mform->createElement('submit', $submitbuttonname, $submitlabel),
+                $mform->createElement('cancel'),
+            ];
+            $buttonarname = $forceuniqueid && $this::$uniqueid > 0 ? 'buttonar_' . $this::$uniqueid : 'buttonar';
+            $mform->addGroup($buttonarray, $buttonarname, '', [' '], false);
             $mform->closeHeaderBefore('buttonar');
         } else {
-            //no group needed
-            $mform->addElement('submit', 'submitbutton', $submitlabel);
+            // No group needed.
+            $mform->addElement('submit', $submitbuttonname, $submitlabel);
             $mform->closeHeaderBefore('submitbutton');
+        }
+
+        // Increase the uniqueid so that we can have multiple forms with different ids for the action buttons on the same page.
+        if ($forceuniqueid) {
+            $this::$uniqueid++;
         }
     }
 
@@ -1411,7 +1428,7 @@ abstract class moodleform {
      * @param array $strings strings for javascript
      * @deprecated since Moodle 3.3 MDL-57471
      */
-    function init_javascript_enhancement($element, $enhancement, array $options=array(), array $strings=null) {
+    function init_javascript_enhancement($element, $enhancement, array $options=array(), ?array $strings=null) {
         debugging('$mform->init_javascript_enhancement() is deprecated and no longer does anything. '.
             'smartselect uses should be converted to the searchableselector form element.', DEBUG_DEVELOPER);
     }
@@ -1502,7 +1519,7 @@ abstract class moodleform {
      * @param array  $simulatedsubmitteddata       An associative array of form values (same format as $_POST).
      * @param array  $simulatedsubmittedfiles      An associative array of files uploaded (same format as $_FILES). Can be omitted.
      * @param string $method                       'post' or 'get', defaults to 'post'.
-     * @param null   $formidentifier               the default is to use the class name for this class but you may need to provide
+     * @param ?string $formidentifier               the default is to use the class name for this class but you may need to provide
      *                                              a different value here for some forms that are used more than once on the
      *                                              same page.
      */
@@ -1946,7 +1963,7 @@ class MoodleQuickForm extends HTML_QuickForm_DHTMLRulesTableless {
      *
      * @param boolean $disable default true, controls if the shortforms are disabled.
      */
-    function setDisableShortforms ($disable = true) {
+    function setDisableShortforms($disable = true) {
         $this->_disableShortforms = $disable;
     }
 
@@ -2354,12 +2371,21 @@ class MoodleQuickForm extends HTML_QuickForm_DHTMLRulesTableless {
      * @param string $component component name to look the help string in
      * @param string $linktext optional text to display next to the icon
      * @param bool $suppresscheck set to true if the element may not exist
+     * @param string|object|array|int $a An object, string or number that can be used
+     *      within translation strings
      */
-    function addHelpButton($elementname, $identifier, $component = 'moodle', $linktext = '', $suppresscheck = false) {
+    public function addHelpButton(
+        $elementname,
+        $identifier,
+        $component = 'moodle',
+        $linktext = '',
+        $suppresscheck = false,
+        $a = null
+    ) {
         global $OUTPUT;
         if (array_key_exists($elementname, $this->_elementIndex)) {
             $element = $this->_elements[$this->_elementIndex[$elementname]];
-            $element->_helpbutton = $OUTPUT->help_icon($identifier, $component, $linktext);
+            $element->_helpbutton = $OUTPUT->help_icon($identifier, $component, $linktext, $a);
         } else if (!$suppresscheck) {
             debugging(get_string('nonexistentformelements', 'form', $elementname));
         }
@@ -2716,9 +2742,6 @@ require([
       }
     }
 
-    document.getElementById(\'' . $elem->_attributes['id'] . '\').addEventListener(\'blur\', function(ev) {
-        ' . $valFunc . '
-    });
     document.getElementById(\'' . $elem->_attributes['id'] . '\').addEventListener(\'change\', function(ev) {
         ' . $valFunc . '
     });
@@ -3344,7 +3367,9 @@ class MoodleQuickForm_Renderer extends HTML_QuickForm_Renderer_Tableless{
         $groupid = 'fgroup_' . $group->getAttribute('id');
 
         // Update the ID.
-        $group->updateAttributes(array('id' => $groupid));
+        $attributes = $group->getAttributes();
+        $attributes['id'] = $groupid;
+        $group->updateAttributes($attributes);
         $advanced = isset($this->_advancedElements[$group->getName()]);
 
         $html = $OUTPUT->mform_element($group, $required, $advanced, $error, false);
@@ -3655,6 +3680,7 @@ MoodleQuickForm::registerElementType('course', "$CFG->libdir/form/course.php", '
 MoodleQuickForm::registerElementType('cohort', "$CFG->libdir/form/cohort.php", 'MoodleQuickForm_cohort');
 MoodleQuickForm::registerElementType('searchableselector', "$CFG->libdir/form/searchableselector.php", 'MoodleQuickForm_searchableselector');
 MoodleQuickForm::registerElementType('checkbox', "$CFG->libdir/form/checkbox.php", 'MoodleQuickForm_checkbox');
+MoodleQuickForm::registerElementType('choicedropdown', "$CFG->libdir/form/choicedropdown.php", 'MoodleQuickForm_choicedropdown');
 MoodleQuickForm::registerElementType('date_selector', "$CFG->libdir/form/dateselector.php", 'MoodleQuickForm_date_selector');
 MoodleQuickForm::registerElementType('date_time_selector', "$CFG->libdir/form/datetimeselector.php", 'MoodleQuickForm_date_time_selector');
 MoodleQuickForm::registerElementType('duration', "$CFG->libdir/form/duration.php", 'MoodleQuickForm_duration');

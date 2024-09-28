@@ -30,7 +30,7 @@ $string['aria:allcoursesincludinghidden'] = 'Show all courses';
 $string['aria:allcourses'] = 'Show all courses except courses removed from view';
 $string['aria:card'] = 'Switch to card view';
 $string['aria:controls'] = 'Course overview controls';
-$string['aria:courseactions'] = 'Actions for current course';
+$string['aria:courseactions'] = 'Actions for course';
 $string['aria:coursesummary'] = 'Course summary text:';
 $string['aria:courseprogress'] = 'Course progress:';
 $string['aria:customfield'] = 'Show {$a} courses';
@@ -90,13 +90,7 @@ $string['privacy:request:preference:set'] = 'The value of the setting \'{$a->nam
 $string['viewquickstart'] = 'View Quickstart guide';
 $string['zero_default_title'] = 'You\'re not enrolled in any course';
 $string['zero_default_intro'] = 'Once you\'re enrolled in a course, it will appear here.';
+$string['zero_nocourses_intro'] = 'Need help getting started? Check out the <a href="{$a->dochref}" title="{$a->doctitle}" target="{$a->doctarget}">Moodle documentation</a>.';
+$string['zero_nocourses_title'] = 'Create your first course';
 $string['zero_request_title'] = 'Request your first course';
 $string['zero_request_intro'] = 'Need help getting started? Check out the <a href="{$a->dochref}" title="{$a->doctitle}" target="{$a->doctarget}">Moodle documentation</a> or take your first steps with our <a href="{$a->quickhref}" title="{$a->quicktitle}" target="{$a->quicktarget}">Quickstart guide</a>.';
-$string['zero_nocourses_title'] = 'Create your first course';
-$string['zero_nocourses_intro'] = 'Need help getting started? Check out the <a href="{$a->dochref}" title="{$a->doctitle}" target="{$a->doctarget}">Moodle documentation</a> or take your first steps with our Quickstart guide.';
-
-// Deprecated since Moodle 4.0.
-$string['clearsearch'] = "Clear search";
-$string['aria:lastaccessed'] = 'Sort courses by last accessed date';
-$string['aria:shortname'] = 'Sort courses by course short name';
-$string['aria:title'] = 'Sort courses by course name';

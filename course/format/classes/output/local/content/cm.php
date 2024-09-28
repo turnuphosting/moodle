@@ -25,6 +25,7 @@
 namespace core_courseformat\output\local\content;
 
 use cm_info;
+use context_course;
 use core\output\named_templatable;
 use core_availability\info_module;
 use core_courseformat\base as course_format;
@@ -68,6 +69,12 @@ class cm implements named_templatable, renderable {
     /** @var string the activity completion class name */
     protected $completionclass;
 
+    /** @var string the activity visibility class name */
+    protected $visibilityclass;
+
+    /** @var string the activity groupmode badge class name */
+    protected $groupmodeclass;
+
     /**
      * Constructor.
      *
@@ -90,6 +97,8 @@ class cm implements named_templatable, renderable {
         $this->controlmenuclass = $format->get_output_classname('content\\cm\\controlmenu');
         $this->availabilityclass = $format->get_output_classname('content\\cm\\availability');
         $this->completionclass = $format->get_output_classname('content\\cm\\completion');
+        $this->visibilityclass = $format->get_output_classname('content\\cm\\visibility');
+        $this->groupmodeclass = $format->get_output_classname('content\\cm\\groupmode');
     }
 
     /**
@@ -99,6 +108,8 @@ class cm implements named_templatable, renderable {
      * @return stdClass data context for a mustache template
      */
     public function export_for_template(renderer_base $output): stdClass {
+        global $PAGE;
+
         $mod = $this->mod;
         $displayoptions = $this->displayoptions;
 
@@ -110,6 +121,9 @@ class cm implements named_templatable, renderable {
             'textclasses' => $displayoptions['textclasses'],
             'classlist' => [],
             'cmid' => $mod->id,
+            'editing' => $PAGE->user_is_editing(),
+            'sectionnum' => $this->section->section,
+            'cmbulk' => !$mod->get_delegated_section_info(),
         ];
 
         // Add partial data segments.
@@ -118,15 +132,17 @@ class cm implements named_templatable, renderable {
         $haspartials['availability'] = $this->add_availability_data($data, $output);
         $haspartials['alternative'] = $this->add_alternative_content_data($data, $output);
         $haspartials['completion'] = $this->add_completion_data($data, $output);
+        $haspartials['dates'] = $this->add_dates_data($data, $output);
         $haspartials['editor'] = $this->add_editor_data($data, $output);
         $haspartials['groupmode'] = $this->add_groupmode_data($data, $output);
+        $haspartials['visibility'] = $this->add_visibility_data($data, $output);
+        $this->add_actvitychooserbutton_data($data, $output);
         $this->add_format_data($data, $haspartials, $output);
 
         // Calculated fields.
         if (!empty($data->url)) {
             $data->hasurl = true;
         }
-
         return $data;
     }
 
@@ -171,7 +187,7 @@ class cm implements named_templatable, renderable {
             $this->displayoptions
         );
         $modavailability = $availability->export_for_template($output);
-        $data->modavailability = $modavailability;
+        $data->modavailability = $modavailability ?? false;
         return $availability->has_availability($output);
     }
 
@@ -198,6 +214,26 @@ class cm implements named_templatable, renderable {
     }
 
     /**
+     * Add activity dates information to the data structure.
+     *
+     * @param stdClass $data the current cm data reference
+     * @param renderer_base $output typically, the renderer that's calling this function
+     * @return bool the module has completion information
+     */
+    protected function add_dates_data(stdClass &$data, renderer_base $output): bool {
+        global $USER;
+        $course = $this->mod->get_course();
+        if (!$course->showactivitydates) {
+            return false;
+        }
+        $activitydates = \core\activity_dates::get_dates_for_module($this->mod, $USER->id);
+        $templatedata = new \core_course\output\activity_dates($activitydates);
+        $data->dates = $templatedata->export_for_template($output);
+
+        return $data->dates->hasdates;
+    }
+
+    /**
      * Add activity completion information to the data structure.
      *
      * @param stdClass $data the current cm data reference
@@ -208,7 +244,7 @@ class cm implements named_templatable, renderable {
         $completion = new $this->completionclass($this->format, $this->section, $this->mod);
         $templatedata = $completion->export_for_template($output);
         if ($templatedata) {
-            $data->activityinfo = $templatedata;
+            $data->completion = $templatedata;
             return true;
         }
         return false;
@@ -248,6 +284,7 @@ class cm implements named_templatable, renderable {
             $this->mod->has_custom_cmlist_item() &&
             !$haspartials['availability'] &&
             !$haspartials['completion'] &&
+            !$haspartials['dates'] &&
             !$haspartials['groupmode'] &&
             !isset($data->modhiddenfromstudents) &&
             !isset($data->modstealth) &&
@@ -267,10 +304,16 @@ class cm implements named_templatable, renderable {
      * @return bool if the cm has editor data
      */
     protected function add_editor_data(stdClass &$data, renderer_base $output): bool {
-        if (!$this->format->show_editor()) {
+        $course = $this->format->get_course();
+        $coursecontext = context_course::instance($course->id);
+        $editcaps = [];
+        if (has_capability('moodle/course:activityvisibility', $coursecontext)) {
+            $editcaps = ['moodle/course:activityvisibility'];
+        }
+        if (!$this->format->show_editor($editcaps)) {
             return false;
         }
-        $returnsection = $this->format->get_section_number();
+        $returnsection = $this->format->get_sectionnum();
         // Edit actions.
         $controlmenu = new $this->controlmenuclass(
             $this->format,
@@ -278,7 +321,8 @@ class cm implements named_templatable, renderable {
             $this->mod,
             $this->displayoptions
         );
-        $data->controlmenu = $controlmenu->export_for_template($output);
+        $data->controlmenu = $controlmenu->export_for_template($output) ?? false;
+
         if (!$this->format->supports_components()) {
             // Add the legacy YUI move link.
             $data->moveicon = course_get_cm_move($this->mod, $returnsection);
@@ -294,32 +338,37 @@ class cm implements named_templatable, renderable {
      * @return bool the module has group mode information
      */
     protected function add_groupmode_data(stdClass &$data, renderer_base $output): bool {
-        if (!plugin_supports('mod', $this->mod->modname, FEATURE_GROUPS, false)) {
-            return false;
-        }
+        $groupmode = new $this->groupmodeclass($this->format, $this->section, $this->mod);
+        $data->groupmodeinfo = $groupmode->export_for_template($output);
+        return !empty($data->groupmodeinfo);
+    }
 
-        if (!has_capability('moodle/course:manageactivities', $this->mod->context)) {
-            return false;
+    /**
+     * Add visibility information to the data structure.
+     *
+     * @param stdClass $data the current cm data reference
+     * @param renderer_base $output typically, the renderer that's calling this function
+     * @return bool if the cm has visibility data
+     */
+    protected function add_visibility_data(stdClass &$data, renderer_base $output): bool {
+        $visibility = new $this->visibilityclass($this->format, $this->section, $this->mod);
+        $templatedata = $visibility->export_for_template($output);
+        $data->visibility = $templatedata ?? false;
+        if ($templatedata) {
+            return true;
         }
+        return false;
+    }
 
-        switch ($this->mod->effectivegroupmode) {
-            case SEPARATEGROUPS:
-                $groupicon = 'i/groups';
-                $groupalt = get_string('groupsseparate', 'group');
-                break;
-            case VISIBLEGROUPS:
-                $groupicon = 'i/groupv';
-                $groupalt = get_string('groupsvisible', 'group');
-                break;
-            default:
-                return false;
-        }
-
-        $data->groupmodeinfo = (object) [
-            'groupicon' => $groupicon,
-            'groupalt' => $groupalt,
-        ];
-        return true;
+    /**
+     * Add the activity chooser button data to the data structure.
+     *
+     * @param stdClass $data the current cm data reference
+     * @param renderer_base $output typically, the renderer that's calling this function
+     */
+    protected function add_actvitychooserbutton_data(stdClass &$data, renderer_base $output): void {
+        $activitychooserbutton = new \core_course\output\activitychooserbutton($this->section, $this->mod);
+        $data->activitychooserbutton = $activitychooserbutton->export_for_template($output);
     }
 
     /**

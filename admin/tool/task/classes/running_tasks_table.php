@@ -49,6 +49,7 @@ class running_tasks_table extends \table_sql {
             'classname'    => get_string('classname', 'tool_task'),
             'type'         => get_string('tasktype', 'admin'),
             'time'         => get_string('taskage', 'tool_task'),
+            'progress'     => get_string('progress', 'core'),
             'timestarted'  => get_string('started', 'tool_task'),
             'hostname'     => get_string('hostname', 'tool_task'),
             'pid'          => get_string('pid', 'tool_task'),
@@ -85,7 +86,7 @@ class running_tasks_table extends \table_sql {
      * @param   \stdClass $row
      * @return  string
      */
-    public function col_classname($row) : string {
+    public function col_classname($row): string {
         $output = $row->classname;
         if ($row->type == 'scheduled') {
             if (class_exists($row->classname)) {
@@ -108,11 +109,11 @@ class running_tasks_table extends \table_sql {
      * @return  string
      * @throws  \coding_exception
      */
-    public function col_type($row) : string {
+    public function col_type($row): string {
         if ($row->type == 'scheduled') {
-            $output = \html_writer::span(get_string('scheduled', 'tool_task'), 'badge badge-primary');
+            $output = \html_writer::span(get_string('scheduled', 'tool_task'), 'badge bg-primary text-white');
         } else if ($row->type == 'adhoc') {
-            $output = \html_writer::span(get_string('adhoc', 'tool_task'), 'badge badge-dark');
+            $output = \html_writer::span(get_string('adhoc', 'tool_task'), 'badge bg-dark text-white');
         } else {
             // This shouldn't ever happen.
             $output = '';
@@ -126,7 +127,7 @@ class running_tasks_table extends \table_sql {
      * @param   \stdClass $row
      * @return  string
      */
-    public function col_time($row) : string {
+    public function col_time($row): string {
         global $OUTPUT;
 
         $taskmethod = "{$row->type}_task_from_record";
@@ -150,7 +151,30 @@ class running_tasks_table extends \table_sql {
      * @param   \stdClass $row
      * @return  string
      */
-    public function col_timestarted($row) : string {
+    public function col_timestarted($row): string {
         return userdate($row->timestarted);
     }
+
+    /**
+     * Format the progress column.
+     *
+     * @param \stdClass $row
+     * @return string
+     */
+    public function col_progress($row): string {
+        // Check to see if there is a stored progress record for this task.
+        if ($row->type === 'adhoc') {
+            $idnumber = \core\output\stored_progress_bar::convert_to_idnumber($row->classname, $row->id);
+        } else {
+            $idnumber = \core\output\stored_progress_bar::convert_to_idnumber($row->classname);
+        }
+
+        $bar = \core\output\stored_progress_bar::get_by_idnumber($idnumber);
+        if ($bar) {
+            return $bar->get_content();
+        } else {
+            return '-';
+        }
+    }
+
 }

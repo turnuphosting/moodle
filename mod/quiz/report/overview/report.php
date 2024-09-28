@@ -25,7 +25,6 @@
 use mod_quiz\local\reports\attempts_report;
 use mod_quiz\question\bank\qbank_helper;
 use mod_quiz\quiz_attempt;
-use mod_quiz\quiz_settings;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -42,20 +41,8 @@ require_once($CFG->dirroot . '/mod/quiz/report/overview/overview_table.php');
  */
 class quiz_overview_report extends attempts_report {
 
-    /**
-     * @var array|null cached copy of qbank_helper::get_question_structure for use during regrades.
-     */
-    protected $structureforregrade = null;
-
-    /**
-     * @var array|null used during regrades, to cache which new questionid to use for each old on.
-     *      for random questions, stores oldquestionid => newquestionid.
-     *      See get_new_question_for_regrade.
-     */
-    protected $newquestionidsforold = null;
-
     public function display($quiz, $cm, $course) {
-        global $DB, $PAGE;
+        global $DB, $PAGE, $OUTPUT;
 
         list($currentgroup, $studentsjoins, $groupstudentsjoins, $allowedjoins) = $this->init(
                 'overview', 'quiz_overview_settings_form', $quiz, $cm, $course);
@@ -105,7 +92,7 @@ class quiz_overview_report extends attempts_report {
         if ($options->attempts == self::ALL_WITH) {
             // This option is only available to users who can access all groups in
             // groups mode, so setting allowed to empty (which means all quiz attempts
-            // are accessible, is not a security porblem.
+            // are accessible, is not a security problem.
             $allowedjoins = new \core\dml\sql_join();
         }
 
@@ -127,49 +114,7 @@ class quiz_overview_report extends attempts_report {
         if ($hasquestions && ($hasstudents || $options->attempts == self::ALL_WITH)) {
             // Construct the SQL.
             $table->setup_sql_queries($allowedjoins);
-
             if (!$table->is_downloading()) {
-                // Output the regrade buttons.
-                if (has_capability('mod/quiz:regrade', $this->context)) {
-                    $regradesneeded = $this->count_question_attempts_needing_regrade(
-                            $quiz, $groupstudentsjoins);
-                    if ($currentgroup) {
-                        $a= new stdClass();
-                        $a->groupname = format_string(groups_get_group_name($currentgroup), true, [
-                            'context' => $this->context,
-                        ]);
-                        $a->coursestudents = get_string('participants');
-                        $a->countregradeneeded = $regradesneeded;
-                        $regradealldrydolabel =
-                                get_string('regradealldrydogroup', 'quiz_overview', $a);
-                        $regradealldrylabel =
-                                get_string('regradealldrygroup', 'quiz_overview', $a);
-                        $regradealllabel =
-                                get_string('regradeallgroup', 'quiz_overview', $a);
-                    } else {
-                        $regradealldrydolabel =
-                                get_string('regradealldrydo', 'quiz_overview', $regradesneeded);
-                        $regradealldrylabel =
-                                get_string('regradealldry', 'quiz_overview');
-                        $regradealllabel =
-                                get_string('regradeall', 'quiz_overview');
-                    }
-                    $displayurl = new moodle_url($options->get_url(), ['sesskey' => sesskey()]);
-                    echo '<div class="regradebuttons">';
-                    echo '<form action="'.$displayurl->out_omit_querystring().'">';
-                    echo '<div>';
-                    echo html_writer::input_hidden_params($displayurl);
-                    echo '<input type="submit" class="btn btn-secondary" name="regradeall" value="'.$regradealllabel.'"/>';
-                    echo '<input type="submit" class="btn btn-secondary ml-1" name="regradealldry" value="' .
-                            $regradealldrylabel . '"/>';
-                    if ($regradesneeded) {
-                        echo '<input type="submit" class="btn btn-secondary ml-1" name="regradealldrydo" value="' .
-                                $regradealldrydolabel . '"/>';
-                    }
-                    echo '</div>';
-                    echo '</form>';
-                    echo '</div>';
-                }
                 // Print information on the grading method.
                 if ($strattempthighlight = quiz_report_highlighting_grading_method(
                         $quiz, $this->qmsubselect, $options->onlygraded)) {
@@ -192,8 +137,10 @@ class quiz_overview_report extends attempts_report {
             $this->add_time_columns($columns, $headers);
 
             $this->add_grade_columns($quiz, $options->usercanseegrades, $columns, $headers, false);
+            $this->add_grade_item_columns($options->usercanseegrades, $columns, $headers);
 
-            if (!$table->is_downloading() && has_capability('mod/quiz:regrade', $this->context) &&
+            $canregrade = has_capability('mod/quiz:regrade', $this->context);
+            if (!$table->is_downloading() && $canregrade &&
                     $this->has_regraded_questions($table->sql->from, $table->sql->where, $table->sql->params)) {
                 $columns[] = 'regraded';
                 $headers[] = get_string('regrade', 'quiz_overview');
@@ -202,7 +149,7 @@ class quiz_overview_report extends attempts_report {
             if ($options->slotmarks) {
                 foreach ($questions as $slot => $question) {
                     $columns[] = 'qsgrade' . $slot;
-                    $header = get_string('qbrief', 'quiz', $question->number);
+                    $header = get_string('qbrief', 'quiz', $question->displaynumber);
                     if (!$table->is_downloading()) {
                         $header .= '<br />';
                     } else {
@@ -217,6 +164,10 @@ class quiz_overview_report extends attempts_report {
             $table->set_attribute('class', 'generaltable generalbox grades');
 
             $table->out($options->pagesize, true);
+
+            if ($canregrade && !$table->is_downloading()) {
+                $this->display_commit_regrade_if_required($quiz, $groupstudentsjoins, $options);
+            }
         }
 
         if (!$table->is_downloading() && $options->usercanseegrades) {
@@ -250,7 +201,45 @@ class quiz_overview_report extends attempts_report {
                 echo $output->chart($chart, $graphname, ['dir' => 'ltr']);
             }
         }
+
         return true;
+    }
+
+    /**
+     * If a previous dry run regrade had been done, display a message to commit the changes.
+     *
+     * @param stdClass $quiz quiz settings.
+     * @param \core\dml\sql_join $groupstudentsjoins which users' attempts should be considered.
+     * @param quiz_overview_options $options report options.
+     */
+    protected function display_commit_regrade_if_required(
+        stdClass $quiz,
+        \core\dml\sql_join $groupstudentsjoins,
+        quiz_overview_options $options,
+    ) {
+        global $OUTPUT;
+
+        [$attemptcount, $slotcount] = $this->count_attempts_and_questions_needing_regrade($quiz, $groupstudentsjoins);
+        if (!$attemptcount) {
+            return;
+        }
+
+        $commitregradeurl = new moodle_url($options->get_url(), ['sesskey' => sesskey(), 'regradealldrydo' => 1]);
+
+        // We can't use $OUTPUT->notification because is aggressively cleans the message, which strips the button.
+        echo html_writer::div(get_string('regrade_regradeneedednotificationmessage', 'quiz_overview',
+                ['attempts' => $attemptcount, 'questions' => $slotcount]) . ' ' .
+            $OUTPUT->single_button($commitregradeurl, get_string('regrade_commitregrade', 'quiz_overview')),
+            'alert alert-info alert-block fade in');
+    }
+
+    #[\Override]
+    protected function process_actions($quiz, $cm, $currentgroup, \core\dml\sql_join $groupstudentsjoins,
+            \core\dml\sql_join $allowedjoins, $redirecturl) {
+        parent::process_actions($quiz, $cm, $currentgroup, $groupstudentsjoins, $allowedjoins, $redirecturl);
+
+        // Process regrade actions.
+        $this->process_regrade_actions($quiz, $cm, $currentgroup, $groupstudentsjoins, $redirecturl);
     }
 
     /**
@@ -260,34 +249,38 @@ class quiz_overview_report extends attempts_report {
      * @param stdClass $cm
      * @param int $currentgroup
      * @param \core\dml\sql_join $groupstudentsjoins (joins, wheres, params)
-     * @param \core\dml\sql_join $allowedjoins (joins, wheres, params)
      * @param moodle_url $redirecturl
      */
-    protected function process_actions($quiz, $cm, $currentgroup, \core\dml\sql_join $groupstudentsjoins,
-            \core\dml\sql_join $allowedjoins, $redirecturl) {
-        parent::process_actions($quiz, $cm, $currentgroup, $groupstudentsjoins, $allowedjoins, $redirecturl);
+    protected function process_regrade_actions($quiz, $cm, $currentgroup,
+            \core\dml\sql_join $groupstudentsjoins, moodle_url $redirecturl) {
 
-        if (empty($currentgroup) || $this->hasgroupstudents) {
-            if (optional_param('regrade', 0, PARAM_BOOL) && confirm_sesskey()) {
-                if ($attemptids = optional_param_array('attemptid', [], PARAM_INT)) {
-                    $this->start_regrade($quiz, $cm);
-                    $this->regrade_attempts($quiz, false, $groupstudentsjoins, $attemptids);
-                    $this->finish_regrade($redirecturl);
-                }
-            }
+        if ($currentgroup && !$this->hasgroupstudents) {
+            return;
+        }
+        if (!has_capability('mod/quiz:regrade', $this->context)) {
+            return;
         }
 
-        if (optional_param('regradeall', 0, PARAM_BOOL) && confirm_sesskey()) {
-            $this->start_regrade($quiz, $cm);
-            $this->regrade_attempts($quiz, false, $groupstudentsjoins);
-            $this->finish_regrade($redirecturl);
+        $dryrun = optional_param('dryrunregrade', 0, PARAM_BOOL);
+        if ($dryrun || optional_param('regrade', 0, PARAM_BOOL)) {
 
-        } else if (optional_param('regradealldry', 0, PARAM_BOOL) && confirm_sesskey()) {
-            $this->start_regrade($quiz, $cm);
-            $this->regrade_attempts($quiz, true, $groupstudentsjoins);
-            $this->finish_regrade($redirecturl);
+            $attemptids = [];
+            if (optional_param('regradeselectedattempts', 0, PARAM_BOOL)) {
+                $attemptids = optional_param_array('attemptid', [], PARAM_INT);
+            }
 
-        } else if (optional_param('regradealldrydo', 0, PARAM_BOOL) && confirm_sesskey()) {
+            $slots = null;
+            if (optional_param('regradeselectedquestions', 0, PARAM_BOOL)) {
+                $slots = optional_param_array('regradeslot', [], PARAM_INT);
+            }
+
+            $this->start_regrade($quiz, $cm);
+            $this->regrade_attempts($quiz, $dryrun, $groupstudentsjoins, $attemptids, $slots);
+            $this->finish_regrade($redirecturl);
+        }
+
+        // Process commit of a previous dry run.
+        if (optional_param('regradealldrydo', 0, PARAM_BOOL) && confirm_sesskey()) {
             $this->start_regrade($quiz, $cm);
             $this->regrade_attempts_needing_it($quiz, $groupstudentsjoins);
             $this->finish_regrade($redirecturl);
@@ -340,7 +333,7 @@ class quiz_overview_report extends attempts_report {
      *
      * @param stdClass $attempt the quiz attempt to regrade.
      * @param bool $dryrun if true, do a pretend regrade, otherwise do it for real.
-     * @param array $slots if null, regrade all questions, otherwise, just regrade
+     * @param array|null $slots if null, regrade all questions, otherwise, just regrade
      *      the questions with those slots.
      * @return array messages array with keys slot number, and values reasons why that slot cannot be regraded.
      */
@@ -352,6 +345,8 @@ class quiz_overview_report extends attempts_report {
         $transaction = $DB->start_delegated_transaction();
 
         $quba = question_engine::load_questions_usage_by_activity($attempt->uniqueid);
+        $versioninformation = qbank_helper::get_version_information_for_questions_in_attempt(
+            $attempt, $this->context);
 
         if (is_null($slots)) {
             $slots = $quba->get_slots();
@@ -362,7 +357,7 @@ class quiz_overview_report extends attempts_report {
         foreach ($slots as $slot) {
             $qqr = new stdClass();
             $qqr->oldfraction = $quba->get_question_fraction($slot);
-            $otherquestionversion = $this->get_new_question_for_regrade($attempt, $quba, $slot);
+            $otherquestionversion = question_bank::load_question($versioninformation[$slot]->newquestionid);
 
             $message = $quba->validate_can_regrade_with_other_version($slot, $otherquestionversion);
             if ($message) {
@@ -408,55 +403,6 @@ class quiz_overview_report extends attempts_report {
     }
 
     /**
-     * For use in tests only. Clear the cached regrade data.
-     */
-    public function clear_regrade_date_cache(): void {
-        $this->structureforregrade = null;
-        $this->newquestionidsforold = null;
-    }
-
-    /**
-     * Work out of we should be using a new question version for a particular slot in a regrade.
-     *
-     * @param stdClass $attempt the attempt being regraded.
-     * @param question_usage_by_activity $quba the question_usage corresponding to that.
-     * @param int $slot which slot is currently being regraded.
-     * @return question_definition other question version to use for this slot.
-     */
-    protected function get_new_question_for_regrade(stdClass $attempt,
-            question_usage_by_activity $quba, int $slot): question_definition {
-
-        // If the cache is empty, get information about all the slots.
-        if ($this->structureforregrade === null) {
-            $this->newquestionidsforold = [];
-            // Load the data about all the non-random slots now.
-            $this->structureforregrade = qbank_helper::get_question_structure(
-                    $attempt->quiz, $this->context);
-        }
-
-        // Because of 'Redo question in attempt' feature, we need to find the original slot number.
-        $originalslot = $quba->get_question_attempt_metadata($slot, 'originalslot') ?? $slot;
-
-        // If this is a non-random slot, we will have the right info cached.
-        if ($this->structureforregrade[$originalslot]->qtype != 'random') {
-            // This is a non-random slot.
-            return question_bank::load_question($this->structureforregrade[$originalslot]->questionid);
-        }
-
-        // We must be dealing with a random question. Check that cache.
-        $currentquestion = $quba->get_question_attempt($originalslot)->get_question(false);
-        if (isset($this->newquestionidsforold[$currentquestion->id])) {
-            return question_bank::load_question($this->newquestionidsforold[$currentquestion->id]);
-        }
-
-        // This is a random question we have not seen yet. Find the latest version.
-        $versionsoptions = qbank_helper::get_version_options($currentquestion->id);
-        $latestversion = reset($versionsoptions);
-        $this->newquestionidsforold[$currentquestion->id] = $latestversion->questionid;
-        return question_bank::load_question($latestversion->questionid);
-    }
-
-    /**
      * Regrade attempts for this quiz, exactly which attempts are regraded is
      * controlled by the parameters.
      *
@@ -466,12 +412,15 @@ class quiz_overview_report extends attempts_report {
      * for these users.
      * @param array $attemptids blank for all attempts, otherwise only regrade
      * attempts whose id is in this list.
+     * @param array|null $slots if null, regrade all questions, otherwise, just regrade
+     *      the questions with those slots.
      */
     protected function regrade_attempts($quiz, $dryrun = false,
-            core\dml\sql_join $groupstudentsjoins = null, $attemptids = []) {
+            ?\core\dml\sql_join $groupstudentsjoins = null, $attemptids = [], ?array $slots = null) {
         global $DB;
         $this->unlock_session();
 
+        // Get the attempts to regrade.
         $userfieldsapi = \core_user\fields::for_name();
         $sql = "SELECT quiza.*, " . $userfieldsapi->get_sql('u', false, '', '', false)->selects . "
                   FROM {quiz_attempts} quiza
@@ -497,15 +446,22 @@ class quiz_overview_report extends attempts_report {
             return;
         }
 
-        $this->regrade_batch_of_attempts($quiz, $attempts, $dryrun, $groupstudentsjoins);
+        // If only regrading some slots, put that information where regrade_batch_of_attempts expects.
+        if ($slots) {
+            foreach ($attempts as $attempt) {
+                $attempt->regradeonlyslots = $slots;
+            }
+        }
+
+        $this->regrade_batch_of_attempts($quiz, $attempts, $dryrun, $groupstudentsjoins, $slots);
     }
 
     /**
-     * Regrade those questions in those attempts that are marked as needing regrading
-     * in the quiz_overview_regrades table.
+     * Regrade the questions in the attempts that are marked as needing it in quiz_overview_regrades.
+     *
      * @param stdClass $quiz the quiz settings.
      * @param \core\dml\sql_join $groupstudentsjoins empty for all attempts, otherwise regrade attempts
-     * for these users.
+     *      for these users.
      */
     protected function regrade_attempts_needing_it($quiz, \core\dml\sql_join $groupstudentsjoins) {
         global $DB;
@@ -585,12 +541,9 @@ class quiz_overview_report extends attempts_report {
             $a['attemptnum'] = $attempt->attempt;
             $a['name'] = fullname($attempt);
             $a['attemptid'] = $attempt->id;
-            if (!isset($attempt->regradeonlyslots)) {
-                $attempt->regradeonlyslots = null;
-            }
             $progressbar->update($a['done'], $a['count'],
                     get_string('regradingattemptxofywithdetails', 'quiz_overview', $a));
-            $messages = $this->regrade_attempt($attempt, $dryrun, $attempt->regradeonlyslots);
+            $messages = $this->regrade_attempt($attempt, $dryrun, $attempt->regradeonlyslots ?? null);
             if ($messages) {
                 $items = [];
                 foreach ($messages as $slot => $message) {
@@ -611,14 +564,14 @@ class quiz_overview_report extends attempts_report {
     }
 
     /**
-     * Count the number of attempts in need of a regrade.
+     * Count the number of attempts and questions in need of regrading after the last dry run.
      *
      * @param stdClass $quiz the quiz settings.
-     * @param \core\dml\sql_join $groupstudentsjoins (joins, wheres, params) If this is given, only data relating
-     * to these users is cleared.
-     * @return int the number of attempts.
+     * @param \core\dml\sql_join $groupstudentsjoins which users' attempts should be considered.
+     * @return array of two elements: the number of different attempts and questions needed to be regraded.
      */
-    protected function count_question_attempts_needing_regrade($quiz, \core\dml\sql_join $groupstudentsjoins) {
+    protected function count_attempts_and_questions_needing_regrade($quiz,
+            \core\dml\sql_join $groupstudentsjoins): array {
         global $DB;
 
         $userjoin = '';
@@ -632,7 +585,8 @@ class quiz_overview_report extends attempts_report {
         }
 
         $params['cquiz'] = $quiz->id;
-        $sql = "SELECT COUNT(DISTINCT quiza.id)
+        $sql = "SELECT COUNT(DISTINCT quiza.id) AS attemptcount,
+                       COUNT(DISTINCT qqr.slot) AS slotcount
                   FROM {quiz_attempts} quiza
                   JOIN {quiz_overview_regrades} qqr ON quiza.uniqueid = qqr.questionusageid
                 $userjoin
@@ -641,7 +595,8 @@ class quiz_overview_report extends attempts_report {
                       quiza.quiz = :cquiz AND
                       quiza.preview = 0 AND
                       qqr.regraded = 0";
-        return $DB->count_records_sql($sql, $params);
+        $counts = $DB->get_record_sql($sql, $params);
+        return [$counts->attemptcount, $counts->slotcount];
     }
 
     /**

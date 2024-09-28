@@ -9,13 +9,18 @@ Feature: We can use calculated grade totals
       | fullname | shortname | category | groupmode |
       | Course 1 | C1 | 0 | 1 |
     And the following "users" exist:
-      | username | firstname | lastname | email | idnumber |
-      | teacher1 | Teacher | 1 | teacher1@example.com | t1 |
-      | student1 | Student | 1 | student1@example.com | s1 |
+      | username | firstname | lastname | email                | idnumber |
+      | teacher1 | Teacher   | 1        | teacher1@example.com | t1       |
+      | student1 | Student   | 1        | student1@example.com | s1       |
+      # Additional students must be enrolled in the course to ensure that the action menu for hiding grades is displayed correctly.
+      | student2 | Student   | 2        | student2@example.com | s2       |
+      | student3 | Student   | 3        | student3@example.com | s3       |
     And the following "course enrolments" exist:
-      | user | course | role |
-      | teacher1 | C1 | editingteacher |
-      | student1 | C1 | student |
+      | user     | course | role           |
+      | teacher1 | C1     | editingteacher |
+      | student1 | C1     | student        |
+      | student2 | C1     | student        |
+      | student3 | C1     | student        |
     And the following "grade categories" exist:
       | fullname         | course |
       | Sub category 1   | C1     |
@@ -39,19 +44,17 @@ Feature: We can use calculated grade totals
     And I log in as "admin"
     And I set the following administration settings values:
       | grade_aggregations_visible | Mean of grades,Weighted mean of grades,Simple weighted mean of grades,Mean of grades (with extra credits),Median of grades,Lowest grade,Highest grade,Mode of grades,Natural |
-    And I log out
-    And I log in as "teacher1"
-    And I am on "Course 1" course homepage with editing mode on
-    And I navigate to "View > Grader report" in the course gradebook
-    And I change window size to "large"
-    And I give the grade "60.00" to the user "Student 1" for the grade item "Test assignment one &"
-    And I give the grade "20.00" to the user "Student 1" for the grade item "Test assignment two"
-    And I give the grade "40.00" to the user "Student 1" for the grade item "Test assignment three"
-    And I give the grade "10.00" to the user "Student 1" for the grade item "Test assignment five"
-    And I give the grade "5.00" to the user "Student 1" for the grade item "Test assignment six"
-    And I give the grade "10.00" to the user "Student 1" for the grade item "Test assignment eight"
-    And I give the grade "5.00" to the user "Student 1" for the grade item "Test assignment nine"
-    And I press "Save changes"
+    And the following "grade grades" exist:
+      | gradeitem             | user     | grade |
+      | Test assignment one & | student1 | 60.00 |
+      | Test assignment two   | student1 | 20.00 |
+      | Test assignment three | student1 | 40.00 |
+      | Test assignment five  | student1 | 10.00 |
+      | Test assignment six   | student1 | 5.00  |
+      | Test assignment eight | student1 | 10.00 |
+      | Test assignment nine  | student1 | 5.00  |
+    And I am on the "Course 1" "grades > Grader report > View" page logged in as "teacher1"
+    And I turn editing mode on
     And I change window size to "large"
     And I hide the grade item "Test assignment two" of type "gradeitem" on "grader" page
     And I hide the grade item "Test assignment five" of type "gradeitem" on "grader" page
@@ -261,10 +264,7 @@ Feature: We can use calculated grade totals
     Then I should see "114.82 (18.27 %)" in the "overview-grade" "table"
     And I click on "Course 1" "link" in the "region-main" "region"
     And "Test outcome item one" row "Grade" column of "user-grade" table should contain "Excellent (100.00 %)"
-    And I log out
-    And I log in as "teacher1"
-    And I am on "Course 1" course homepage
-    And I navigate to "Setup > Gradebook setup" in the course gradebook
+    And I am on the "Course 1" "grades > gradebook setup" page logged in as "teacher1"
     And I set the following settings for grade item "Test outcome item one" of type "gradeitem" on "setup" page:
       | aggregationcoef     | 1   |
     And I log out
@@ -273,10 +273,7 @@ Feature: We can use calculated grade totals
     Then I should see "114.00 (18.39 %)" in the "overview-grade" "table"
     And I click on "Course 1" "link" in the "region-main" "region"
     And "Test outcome item one" row "Grade" column of "user-grade" table should contain "Excellent (100.00 %)"
-    And I log out
-    And I log in as "teacher1"
-    And I am on "Course 1" course homepage
-    And I navigate to "Setup > Gradebook setup" in the course gradebook
+    And I am on the "Course 1" "grades > gradebook setup" page logged in as "teacher1"
     And I set the following settings for grade item "Course 1" of type "course" on "setup" page:
       | Aggregation                     | Natural |
       | Include outcomes in aggregation | 0       |
@@ -348,7 +345,7 @@ Feature: We can use calculated grade totals
     And I set the field "Show weightings" to "Show"
     And I press "Save changes"
     And I navigate to "View > User report" in the course gradebook
-    And I click on "Student 1" in the "user" search widget
+    And I click on "Student 1" in the "Search users" search combo box
     And I set the field "View report as" to "Myself"
     And the following should exist in the "user-grade" table:
       | Grade item | Calculated weight | Grade | Range | Contribution to course total |
@@ -378,10 +375,7 @@ Feature: We can use calculated grade totals
       | Test assignment four | 30.93 % | - | 0–150 | 0.00 % |
 
   Scenario: Natural aggregation with drop lowest
-    When I log out
-    And I log in as "admin"
-    And I am on "Course 1" course homepage
-    And I navigate to "View > Grader report" in the course gradebook
+    When I am on the "Course 1" "grades > Grader report > View" page logged in as "admin"
     And I turn editing mode on
     And I set the following settings for grade item "Course 1" of type "course" on "grader" page:
       | Aggregation          | Natural |
@@ -393,23 +387,24 @@ Feature: We can use calculated grade totals
       | Aggregation          | Natural |
       | Exclude empty grades | 0       |
     And I navigate to "Setup > Gradebook setup" in the course gradebook
-    And I press "Add category"
+    And I choose the "Add category" item in the "Add" action menu
     And I set the following fields to these values:
       | Category name | Sub category 3 |
       | Aggregation | Natural |
       | Drop the lowest | 1 |
-    And I press "Save changes"
-    And I press "Add grade item"
+    And I click on "Save" "button" in the "New category" "dialogue"
+    And I wait until the page is ready
+    And I choose the "Add grade item" item in the "Add" action menu
     And I set the following fields to these values:
       | Item name | Manual item 1 |
       | Grade category | Sub category 3 |
     And I click on "Save" "button" in the "New grade item" "dialogue"
-    And I press "Add grade item"
+    And I choose the "Add grade item" item in the "Add" action menu
     And I set the following fields to these values:
       | Item name | Manual item 2 |
       | Grade category | Sub category 3 |
     And I click on "Save" "button" in the "New grade item" "dialogue"
-    And I press "Add grade item"
+    And I choose the "Add grade item" item in the "Add" action menu
     And I set the following fields to these values:
       | Item name | Manual item 3 |
       | Grade category | Sub category 3 |
@@ -453,49 +448,50 @@ Feature: We can use calculated grade totals
     And I turn editing mode off
     And I should see "250.00 (25.25 %)" in the ".course" "css_element"
     And I navigate to "Setup > Gradebook setup" in the course gradebook
-    And I press "Add category"
+    And I choose the "Add category" item in the "Add" action menu
     And I set the following fields to these values:
       | Category name | Sub sub category 1 |
       | Parent category | Sub category 3 |
-    And I press "Save changes"
+    And I click on "Save" "button" in the "New category" "dialogue"
+    And I wait until the page is ready
     And I navigate to "View > Grader report" in the course gradebook
     And I should see "270.00 (24.77 %)" in the ".course" "css_element"
 
   Scenario: Natural aggregation from the setup screen
-    And I navigate to "Setup > Gradebook setup" in the course gradebook
-
+    When I navigate to "Setup > Gradebook setup" in the course gradebook
     And I set the following settings for grade item "Course 1" of type "course" on "setup" page:
       | Aggregation          | Natural |
     And I set the following settings for grade item "Sub category 1" of type "category" on "setup" page:
       | Aggregation          | Natural |
     And I set the following settings for grade item "Sub category 2 &" of type "category" on "setup" page:
       | Aggregation          | Natural |
-
-    And I set the field "Override weight of Test assignment one &" to "1"
     And the field "Weight of Test assignment one &" matches value "37.975"
-    And I set the field "Weight of Test assignment one &" to "10"
-
-    And I set the field "Override weight of Test assignment two" to "1"
     And the field "Weight of Test assignment two" matches value "12.658"
+    And the field "Weight of Sub category 1" matches value "5.696"
+    And the field "Weight of Sub category 2" matches value "5.696"
+    And I set the field "Override weight of Test assignment one &" to "1"
+    And I set the field "Weight of Test assignment one &" to "10"
+    And the field "Weight of Test assignment two" matches value "18.367"
+    And the field "Weight of Sub category 1" matches value "8.265"
+    And the field "Weight of Sub category 2" matches value "8.265"
+    And I set the field "Override weight of Test assignment two" to "1"
     And I set the field "Override weight of Test assignment two" to "0"
-
-    And I set the field "Override weight of Test assignment six" to "1"
     And the field "Weight of Test assignment six" matches value "22.222"
+    And I set the field "Override weight of Test assignment six" to "1"
     And I set the field "Weight of Test assignment six" to "50"
     And I set the field "Override weight of Test assignment six" to "0"
-
-    And I set the field "Override weight of Test assignment ten" to "1"
+    And the field "Weight of Test assignment six" matches value "22.222"
     And the field "Weight of Test assignment ten" matches value "33.333"
+    And I set the field "Override weight of Test assignment ten" to "1"
     And I set the field "Weight of Test assignment ten" to "50"
-
     And I set the field "Override weight of Sub category 1" to "1"
-    And the field "Weight of Sub category 1" matches value "5.696"
     And I set the field "Weight of Sub category 1" to "15"
-
-    When I press "Save changes"
-    And I set the field "Override weight of Test assignment two" to "1"
-    And I set the field "Override weight of Test assignment six" to "1"
-
+    Then the field "Weight of Test assignment one &" matches value "10.0"
+    And the field "Weight of Test assignment two" matches value "16.854"
+    And the field "Weight of Test assignment six" matches value "22.222"
+    And the field "Weight of Test assignment ten" matches value "50.0"
+    And the field "Weight of Sub category 1" matches value "15.0"
+    And I press "Save changes"
     Then the field "Weight of Test assignment one &" matches value "10.0"
     And the field "Weight of Test assignment two" matches value "16.854"
     And the field "Weight of Test assignment six" matches value "22.222"
@@ -505,9 +501,9 @@ Feature: We can use calculated grade totals
     And I set the field "Override weight of Test assignment two" to "0"
     And I set the field "Override weight of Test assignment six" to "0"
     And I set the field "Override weight of Sub category 1" to "0"
+    And the field "Weight of Test assignment one &" matches value "37.975"
+    And the field "Weight of Sub category 1" matches value "5.696"
     And I press "Save changes"
-    And I set the field "Override weight of Test assignment one &" to "1"
-    And I set the field "Override weight of Sub category 1" to "1"
     And the field "Weight of Test assignment one &" matches value "37.975"
     And the field "Weight of Sub category 1" matches value "5.696"
     And I reset weights for grade category "Sub category 2 &"
@@ -530,8 +526,10 @@ Feature: We can use calculated grade totals
     And "//span[@class='grateitemheader'][@title='Link to Test assignment one &amp; Assignment']" "xpath_element" should not exist
     And I set the field "Override weight of Test assignment one &" to "1"
     And I set the field "Weight of Test assignment one &" to "0"
+    And I should see "490.00" in the "Course total" "table_row"
     And I set the field "Override weight of Test assignment six" to "1"
     And I set the field "Weight of Test assignment six" to "0"
+    And I should see "480.00" in the "Course total" "table_row"
     And I set the field "Override weight of Test assignment nine" to "1"
     And I set the field "Weight of Test assignment nine" to "100"
     And I press "Save changes"
@@ -544,7 +542,7 @@ Feature: We can use calculated grade totals
     And I navigate to "View > Grader report" in the course gradebook
     Then I should see "75.00 (16.85 %)" in the ".course" "css_element"
     And I navigate to "View > User report" in the course gradebook
-    And I click on "Student 1" in the "user" search widget
+    And I click on "Student 1" in the "Search users" search combo box
     And I set the field "View report as" to "Myself"
     And the following should exist in the "user-grade" table:
       | Grade item            | Calculated weight | Grade           | Contribution to course total |

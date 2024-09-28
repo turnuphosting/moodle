@@ -24,4 +24,9 @@
 
 defined('MOODLE_INTERNAL') || die();
 $string['config_extension'] = 'Sample config extension setting';
+$string['newfield'] = 'New field';
+$string['newfielderror'] = 'New field cannot be empty';
 $string['pluginname'] = 'Simple BigBlueButtonPlugin';
+$string['completionextraisehandtwice'] = 'Raise hand twice';
+$string['completionextraisehandtwice_desc'] = 'Raise hand twice in a meeting.';
+$string['completionextraisehandtwice_help'] = 'Raise hand twice in a meeting.';

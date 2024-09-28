@@ -34,13 +34,13 @@ use core_reportbuilder\local\report\{column, filter};
 class enrol extends base {
 
     /**
-     * Database tables that this entity uses and their default aliases
+     * Database tables that this entity uses
      *
-     * @return array
+     * @return string[]
      */
-    protected function get_default_table_aliases(): array {
+    protected function get_default_tables(): array {
         return [
-            'enrol' => 'e',
+            'enrol',
         ];
     }
 
@@ -145,12 +145,11 @@ class enrol extends base {
             ->set_type(column::TYPE_TIMESTAMP)
             ->add_fields("{$enrolalias}.enrolperiod")
             ->set_is_sortable(true)
-            ->set_callback(static function(?int $enrolperiod): string {
-                if (!$enrolperiod) {
+            ->set_callback(static function(?int $enrolperiod, stdClass $row): string {
+                if ($enrolperiod === 0) {
                     return '';
                 }
-
-                return format_time($enrolperiod);
+                return format::format_time($enrolperiod, $row);
             });
 
         // Start date column.
